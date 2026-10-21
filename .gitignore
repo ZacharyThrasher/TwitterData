@@ -21,3 +21,6 @@ hash_salt
 .venv/
 build/
 dist/
+
+# Clip monitor snapshots and raw saved pages
+clip_monitor_data/
