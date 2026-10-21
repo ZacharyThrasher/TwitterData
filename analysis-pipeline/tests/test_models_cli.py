@@ -57,3 +57,9 @@ def test_demo_writes_report_without_reply_text(tmp_path):
     results = json.loads((out / "results.json").read_text())
     assert [t["id"] for t in results["confirmatory"]] == ["T1", "T2", "T3", "T9", "T10", "O1", "O2"]
     assert "text" not in pd.read_csv(out / "threads.csv").columns
+
+
+def test_exposure_without_views_returns_nan_not_crash():
+    df = pd.DataFrame({"study_thread_id": ["t", "t"], "premium": [1, 0], "view_count": [None, None]})
+    out = exposure.summarize(df, "premium", n_boot=50)
+    assert out["threads_with_ratio"] == 0 and np.isnan(out["median_ratio"])

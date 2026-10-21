@@ -130,6 +130,8 @@ def load_inputs(
         inp.root_codes = _numeric_where_possible(_read_csv_text(root_codes), keep=("thread_id",))
     if authors:
         inp.authors = _numeric_where_possible(_read_csv_text(authors), keep=("author_id_hash",))
+        if inp.authors["author_id_hash"].duplicated().any():
+            raise ValueError(f"{authors}: more than one row for some author_id_hash values")
     if captures:
         inp.captures = _read_csv_text(captures)
     return inp
@@ -261,7 +263,8 @@ def thread_frame(sessions: pd.DataFrame, inp: Inputs, cfg: AnalysisConfig) -> pd
         meta["thread_id"] = meta["thread_id"].astype(str)
         if "posted_utc" in meta.columns:
             hour = pd.to_datetime(meta["posted_utc"], utc=True, errors="coerce").dt.hour
-            meta["time_of_day"] = pd.cut(hour, [-1, 5, 11, 17, 23], labels=["00-06", "06-12", "12-18", "18-24"]).astype(str)
+            tod = pd.cut(hour, [-1, 5, 11, 17, 23], labels=["00-06", "06-12", "12-18", "18-24"])
+            meta["time_of_day"] = tod.astype(object).where(tod.notna(), None)
         t = t.merge(meta, on="thread_id", how="left", suffixes=("", "_tracker"))
     if inp.root_codes is not None:
         rc = inp.root_codes.copy()

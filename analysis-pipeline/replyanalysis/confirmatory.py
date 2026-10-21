@@ -109,6 +109,8 @@ def test_t1(main: pd.DataFrame, sessions: pd.DataFrame, cfg: AnalysisConfig) -> 
             main, "session_key", "display_rank", ["premium"] + ctl, "study_thread_id", "premium", cfg.alpha)
     except (NotEstimable, np.linalg.LinAlgError) as exc:
         r.notes.append(f"rank-ordered logit sensitivity not estimable: {exc}")
+    walls = wall_share(sessions)
+    r.supporting["premium_wall_share"] = {"by_sort": walls.to_dict("records")}
     amp = exposure.summarize(main, "premium", cfg.bootstrap, cfg.seed, cfg.alpha)
     r.supporting["amplification"] = {k: v for k, v in amp.items() if k != "per_thread"}
     contrast = None
@@ -125,17 +127,20 @@ def test_t1(main: pd.DataFrame, sessions: pd.DataFrame, cfg: AnalysisConfig) -> 
     ratio, (rlo, _rhi) = amp["median_ratio"], amp["median_ratio_ci"]
     model_ok = r.primary.ci_above_zero
     ratio_ok = bool(np.isfinite(ratio) and ratio > SESOI_RATIO and rlo > 1)
-    contrast_ok = contrast is None or contrast.ci_above_zero
+    # The pre-registered fail rule needs the Likes contrast; without it T1 cannot pass.
+    contrast_ok = contrast is not None and contrast.ci_above_zero
     r.direction_ok = model_ok and ratio_ok and contrast_ok
     r.meets_sesoi = ratio_ok
     # Intersection-union rule: every component must hold, so the family p is the largest component p.
-    ps = [r.primary.p] + ([contrast.p] if contrast is not None else [])
-    r.p_for_family = max(p for p in ps if p is not None)
+    ps = [p for p in [r.primary.p] + ([contrast.p] if contrast is not None else []) if p is not None]
+    r.p_for_family = max(ps) if ps else None
     if not model_ok:
         r.notes.append("Premium rank coefficient interval does not sit above zero.")
     if not ratio_ok:
         r.notes.append(f"Amplification ratio {ratio:.2f} (CI low {rlo:.2f}) misses the >1.5 with CI above 1 rule.")
-    if contrast is not None and not contrast.ci_above_zero:
+    if contrast is None:
+        r.notes.append("Without Likes captures the 'regardless of likes' part of T1 cannot be checked, so T1 cannot pass.")
+    elif not contrast.ci_above_zero:
         r.notes.append("Premium advantage disappears in the Likes sort contrast.")
     return r
 

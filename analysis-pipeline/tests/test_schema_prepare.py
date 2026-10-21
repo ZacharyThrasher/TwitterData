@@ -147,3 +147,18 @@ def test_duplicate_code_rows_are_rejected(tmp_path):
     p.write_text("uid,incivility\n1,0\n1,1\n")
     with pytest.raises(ValueError, match="adjudicated"):
         load_codes(p)
+
+
+def test_mixed_iso_timestamps_parse(small):
+    df = small["replies"].head(4).copy()
+    df.loc[df.index[0], "created_at_utc"] = "2026-11-02T00:00:00Z"
+    out = _coerce(df)
+    assert out["created_at_utc"].notna().all()
+
+
+def test_duplicate_author_rows_are_rejected(tmp_path, small):
+    from replyanalysis.prepare import load_inputs
+    small["replies"].to_csv(tmp_path / "r.csv", index=False)
+    (tmp_path / "authors.csv").write_text("author_id_hash,motive\nabc,farmer\nabc,ideologue\n")
+    with pytest.raises(ValueError, match="author_id_hash"):
+        load_inputs([tmp_path / "r.csv"], authors=tmp_path / "authors.csv")

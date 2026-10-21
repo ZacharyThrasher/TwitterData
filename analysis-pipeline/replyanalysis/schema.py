@@ -2,7 +2,7 @@
 
 The schema is owned by the capture parser (`src/twitterdata/schema.py`,
 `schema/reply_table.v1.json`). A copy of the JSON file ships in this package
-so the pipeline runs on its own; `tests/test_schema.py` checks the copy still
+so the pipeline runs on its own; `tests/test_schema_prepare.py` checks the copy still
 matches the repository file when both are present.
 """
 
@@ -84,7 +84,7 @@ def coerce(df: pd.DataFrame, source: str = "table") -> pd.DataFrame:
         elif kind == "boolean":
             out[name] = series.map(_to_bool).astype("boolean")
         elif kind == "timestamp":
-            out[name] = pd.to_datetime(series, utc=True, errors="raise")
+            out[name] = pd.to_datetime(series, utc=True, errors="raise", format="ISO8601")
         else:
             out[name] = series.map(lambda v: None if v is None else str(v)).astype("string")
         if col.get("enum"):

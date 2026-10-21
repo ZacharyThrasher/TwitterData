@@ -247,6 +247,11 @@ def _norm_place(x) -> str | None:
     return t or None
 
 
+def _contains_phrase(text: str, phrase: str) -> bool:
+    """Whole-word containment, so 'us' does not match 'russia' and 'niger' does not match 'nigeria'."""
+    return re.search(rf"\b{re.escape(phrase)}\b", text) is not None
+
+
 def a6_location_mismatch(sessions: pd.DataFrame, cfg: AnalysisConfig) -> dict:
     title = "'About this account' country vs claimed location"
     if not _has(sessions, "account_based_in") or not _has(sessions, "claimed_location"):
@@ -257,7 +262,7 @@ def a6_location_mismatch(sessions: pd.DataFrame, cfg: AnalysisConfig) -> dict:
     a["based"] = a["account_based_in"].map(_norm_place)
     a["claimed"] = a["claimed_location"].map(_norm_place)
     a = a.dropna(subset=["based", "claimed"])
-    a["mismatch"] = [float(b not in c and c not in b) for b, c in zip(a["based"], a["claimed"])]
+    a["mismatch"] = [float(not (_contains_phrase(c, b) or _contains_phrase(b, c))) for b, c in zip(a["based"], a["claimed"])]
     out = {"id": "A6", "title": title, "status": "ran", "authors": int(len(a)),
            "mismatch_rate": float(a["mismatch"].mean()) if len(a) else None,
            "by_premium": {str(k): float(v) for k, v in a.groupby("premium")["mismatch"].mean().items()}}
@@ -265,7 +270,8 @@ def a6_location_mismatch(sessions: pd.DataFrame, cfg: AnalysisConfig) -> dict:
         inc = sessions.groupby("author_id_hash")[cfg.incivility_col].max()
         a = a.join(inc.rename("ever_uncivil"), on="author_id_hash")
         out["by_ever_uncivil"] = {str(k): float(v) for k, v in a.groupby("ever_uncivil")["mismatch"].mean().items()}
-    out["note"] = "Text match on normalised place names; a claimed city inside the based-in country is not caught. Hand-check flagged accounts."
+    out["note"] = ("Whole-word match on normalised place names; a claimed city that does not name its country "
+                   "counts as a mismatch. Hand-check flagged accounts.")
     return out
 
 

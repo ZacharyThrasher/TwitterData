@@ -62,6 +62,9 @@ def render_markdown(r: dict) -> str:
                 lines.append(f"- Premium amplification ratio (view share / reply share): median {_f(s['median_ratio'])} "
                              f"{_interval(s['median_ratio_ci'])} over {s['threads_with_ratio']} threads; pooled "
                              f"{_f(s['pooled_ratio'])} {_interval(s['pooled_ratio_ci'])}.")
+            elif name == "premium_wall_share":
+                walls = ", ".join(f"{w['sort_order']} {_f(100 * w['wall_share'], 0)}% of {w['captures']}" for w in s["by_sort"])
+                lines.append(f"- Captures where every Premium reply sits above every free reply (per section): {walls or 'n/a'}.")
             elif isinstance(s, dict) and "estimate" in s:
                 lines.append(f"- {name.replace('_', ' ')}: {_est(s)} {s['scale']} ({s['method']}).")
         for n in t["notes"]:

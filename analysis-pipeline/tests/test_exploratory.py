@@ -67,3 +67,23 @@ def test_a8_runs_on_historical_series():
 def test_near_duplicates_need_text(null_world, effect_world):
     assert null_world[1]["exploratory"]["near_duplicates"]["status"] == "not run"
     assert effect_world[1]["exploratory"]["near_duplicates"]["status"] == "ran"
+
+
+def test_a6_matches_whole_words_only():
+    d = pd.DataFrame({"author_id_hash": list("abcd"), "premium": [0, 0, 1, 1],
+                      "account_based_in": ["us", "nigeria", "united states", "india"],
+                      "claimed_location": ["russia", "niger", "texas, united states", "india"]})
+    out = exploratory.a6_location_mismatch(d, AnalysisConfig())
+    assert out["mismatch_rate"] == 0.5  # us/russia and nigeria/niger differ; the other two match
+
+
+def test_t1_cannot_pass_without_likes_captures(effect_world):
+    from replyanalysis import confirmatory
+    from replyanalysis.prepare import annotate, load_inputs, main_frame, select_sessions
+    paths, _ = effect_world
+    inp = load_inputs([paths["captures_dir"]])
+    cfg = AnalysisConfig(bootstrap=100)
+    s, _ = select_sessions(annotate(inp, cfg), inp, cfg)
+    s = s[s.sort_order != "likes"]
+    r = confirmatory.test_t1(main_frame(s, cfg), s, cfg)
+    assert r.direction_ok is False and any("Likes" in n for n in r.notes)
