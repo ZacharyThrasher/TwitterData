@@ -21,7 +21,7 @@ blindcode = "blindcode.cli:main"
 include = ["blindcode*"]
 
 [tool.setuptools.package-data]
-blindcode = ["codebooks/*.json"]
+blindcode = ["codebooks/*.json", "codebooks/*.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
