@@ -40,7 +40,7 @@ class Clock:
 
 
 ALLOWED = Source(key="ok", name="Permitted site", access="public_listing", parser="vyro",
-                 automated_allowed=True, permission_note="test")
+                 automated_allowed=True)
 
 
 def make(pages, interval=10):
@@ -49,14 +49,19 @@ def make(pages, interval=10):
     return PoliteFetcher(min_interval=interval, opener=opener, sleep=clock.sleep, clock=clock.now), opener, clock
 
 
-def test_registry_has_no_automated_sources_by_default():
-    assert not any(s.automated_allowed for s in SOURCES.values())
+OFF = Source(key="off", name="Switched-off site", access="public_listing", parser="vyro")
 
 
-def test_refuses_source_without_permission():
+def test_automated_collection_is_on_only_for_the_public_listings():
+    on = {k for k, s in SOURCES.items() if s.automated_allowed}
+    assert on == {"vyro", "clipping_net"}
+    assert all(SOURCES[k].collectable for k in on)
+
+
+def test_refuses_source_switched_off():
     f, opener, _ = make({})
     with pytest.raises(NotPermitted):
-        f.fetch(SOURCES["vyro"], "https://vyro.com/campaigns")
+        f.fetch(OFF, "https://e.com/campaigns")
     assert opener.requests == []  # not even robots.txt is requested
 
 

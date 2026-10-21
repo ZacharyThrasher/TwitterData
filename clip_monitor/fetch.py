@@ -1,7 +1,7 @@
 """Polite fetcher, used only for sources whose terms allow automated access.
 
 Rules it enforces:
-* the source must have automated_allowed=True in sources.py (terms or written permission);
+* the source must have automated_allowed=True in sources.py;
 * robots.txt must allow the URL for our user agent;
 * at least `min_interval` seconds between requests to the same host (or the
   site's Crawl-delay, whichever is larger);

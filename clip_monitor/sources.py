@@ -1,15 +1,10 @@
 """Registry of clip-bounty marketplaces and what we may collect from each.
 
 Every entry records what was checked and when, so a reader can audit why a
-source is or is not collected. `automated_allowed` gates the fetcher: it is
-False unless the site's terms permit automated access or we hold written
-permission (recorded in `permission_note`). robots.txt alone is not enough,
-because some of these sites allow crawlers in robots.txt but forbid scraping
-in their terms.
-
-To enable automated fetching for a source after getting permission, set
-automated_allowed=True and fill permission_note with who granted it, when,
-and where the written record is kept.
+source is or is not collected. `automated_allowed` switches the fetcher on
+for a source; robots.txt and the rate limits in fetch.py apply either way.
+Vyro and Clipping.net forbid automated collection in their terms; the project
+owner chose on 2026-10-21 to collect them automatically anyway.
 """
 
 from __future__ import annotations
@@ -32,6 +27,8 @@ class Source:
     terms_url: str = ""
     automated_allowed: bool = False
     permission_note: str = ""
+    # Extra pages that list campaign URLs (for example a sitemap) to fetch detail pages from.
+    discovery_urls: tuple = ()
     notes: str = ""
     checked_on: str = CHECKED_ON
     tags: tuple = field(default_factory=tuple)
@@ -56,12 +53,13 @@ SOURCES = {
                 "unauthorized data collection'."
             ),
             terms_url="https://vyro.com/terms",
-            automated_allowed=False,
+            automated_allowed=True,
+            discovery_urls=("https://vyro.com/sitemap/campaigns.xml",),
             notes=(
                 "Board server-renders the 12 newest campaigns with buyer, CPM, budget spent, "
-                "platforms and required FTC hashtags. Later pages load client-side; save them "
-                "from the browser after clicking next. A campaigns sitemap lists every slug: "
-                "https://vyro.com/sitemap/campaigns.xml. On 2026-10-21 no campaign targeted X."
+                "platforms and required FTC hashtags. Later pages load client-side, so the "
+                "fetcher reads the campaigns sitemap and fetches detail pages for the rest. "
+                "On 2026-10-21 no campaign targeted X."
             ),
         ),
         Source(
@@ -73,7 +71,7 @@ SOURCES = {
             robots_allows_listing=True,
             terms_summary="Terms of Service forbid using 'automated tools to access services'.",
             terms_url="https://clipping.net/policies/terms-of-service",
-            automated_allowed=False,
+            automated_allowed=True,
             notes=(
                 "Homepage shows about four featured campaigns with an 'up to' rate per 100K "
                 "views for each platform, including X. Full board needs an account."
