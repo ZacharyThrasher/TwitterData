@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Capture queue</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --card: #ffffff; --text: #1d1d1b; --muted: #6b6b66; --line: #e2e2dc;
+    --open: #1f7a4d; --open-bg: #e3f3ea; --soon: #8a6100; --soon-bg: #fbf0d6;
+    --late: #a33a2b; --late-bg: #f8e2de; --accent: #2156c2;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161615; --card: #20201e; --text: #ececea; --muted: #a2a29b; --line: #34342f;
+      --open: #6fd3a0; --open-bg: #183a29; --soon: #e9c46a; --soon-bg: #3a3118;
+      --late: #f08a7a; --late-bg: #3d1f1a; --accent: #8fb0ff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 20px 16px 60px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; font-size: 14px; }
+  .now { border: 2px solid var(--accent); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+          padding: 14px 16px; margin-bottom: 12px; }
+  .card.now { border: 2px solid var(--accent); }
+  .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .pill { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 99px; }
+  .open { color: var(--open); background: var(--open-bg); }
+  .soon { color: var(--soon); background: var(--soon-bg); }
+  .overdue { color: var(--late); background: var(--late-bg); }
+  .title { font-weight: 600; }
+  .meta { color: var(--muted); font-size: 14px; }
+  a.btn { margin-left: auto; background: var(--accent); color: var(--card); text-decoration: none;
+          font-weight: 600; padding: 8px 14px; border-radius: 8px; }
+  ol { margin: 10px 0 0; padding-left: 22px; }
+  li.done { color: var(--muted); text-decoration: line-through; }
+  .empty { color: var(--muted); text-align: center; padding: 40px 0; }
+  .err { color: var(--late); }
+  kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Capture queue</h1>
+  <p class="sub" id="sub">Loading...</p>
+  <div id="list"></div>
+  <p class="meta">Press <kbd>N</kbd> to open the top thread. For each thread: open it, scroll until the
+    counter in the corner turns green, switch sort, repeat. The extension saves as you go.</p>
+</main>
+<script>
+const SORT_LABEL = { relevance: "Relevant", likes: "Likes", recent: "Recent" };
+let seenOpen = new Set();
+let nextVisit = null;
+
+function el(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v);
+  for (const k of kids) e.append(k);
+  return e;
+}
+
+function visitCard(v, first) {
+  const label = v.state === "open" ? `open, ${v.minutes_left} min left`
+    : v.state === "soon" ? `opens in ${v.minutes_until_open} min` : `overdue by ${-v.minutes_left} min`;
+  const steps = el("ol", {});
+  for (const s of v.sorts) {
+    const done = s.status !== "pending";
+    const text = `${SORT_LABEL[s.sort] || s.sort}` + (done ? ` (${s.n_replies || 0} replies, ${s.status})` : "");
+    steps.append(el("li", done ? { class: "done" } : {}, text));
+  }
+  const link = el("a", { class: "btn", href: v.url, target: "_blank", rel: "noopener" }, "Open thread");
+  return el("div", { class: "card" + (first ? " now" : "") },
+    el("div", { class: "row" },
+      el("span", { class: "pill " + v.state }, label),
+      el("span", { class: "title" }, `${v.age_hours}h capture`),
+      el("span", { class: "meta" }, v.topic.replace(/_/g, " ")),
+      link),
+    el("div", { class: "meta" }, `Thread ${v.thread_id}. Sorts in this order:`),
+    steps);
+}
+
+async function refresh() {
+  const sub = document.getElementById("sub");
+  const list = document.getElementById("list");
+  try {
+    const r = await fetch("/api/queue", { cache: "no-store" });
+    const q = await r.json();
+    list.replaceChildren();
+    nextVisit = q.visits.find(v => v.state !== "soon") || null;
+    const open = q.visits.filter(v => v.state === "open").length;
+    sub.textContent = `Viewer ${q.viewer}. ${open} open now, ${q.visits.length} in the next 2 hours. ` +
+      `Target ${q.target_replies} top-level replies per sort. Updated ${new Date().toLocaleTimeString()}.`;
+    if (!q.visits.length) list.append(el("p", { class: "empty" }, "Nothing due in the next 2 hours."));
+    q.visits.forEach((v, i) => list.append(visitCard(v, i === 0 && v.state !== "soon")));
+    for (const v of q.visits) {
+      const key = v.thread_id + "_" + v.age_hours;
+      if (v.state === "open" && !seenOpen.has(key)) {
+        seenOpen.add(key);
+        if (window.Notification && Notification.permission === "granted") {
+          new Notification("Capture window open", { body: `${v.age_hours}h capture, ${v.minutes_left} min left` });
+        }
+      }
+    }
+  } catch (e) {
+    sub.replaceChildren(el("span", { class: "err" }, "Helper not reachable. Is it still running?"));
+  }
+}
+
+document.addEventListener("keydown", e => {
+  if (e.key.toLowerCase() === "n" && nextVisit && !e.ctrlKey && !e.metaKey && !e.altKey) window.open(nextVisit.url, "_blank");
+});
+if (window.Notification && Notification.permission === "default") {
+  document.addEventListener("click", () => Notification.requestPermission(), { once: true });
+}
+refresh();
+setInterval(refresh, 15000);
+</script>
+</body>
+</html>

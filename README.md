@@ -5,6 +5,7 @@ Research code for the TwitterHate project: how X ranking and monetisation reward
 - `docs/preregistration.md`: hypotheses, predictions, analysis plan and stopping rules.
 - `sampling/`: thread sampling tracker (selection, capture schedule, status).
 - `src/twitterdata/capture/`: safe capture parser that turns X thread captures into the reply table ([schema](docs/reply_table_schema.md)).
+- `capture-extension/` + `python -m twitterdata assist`: fast hand capture. A Chrome extension that only listens while you browse, plus a local queue page that saves, parses and marks each due capture ([setup](capture-extension/README.md)).
 - `src/twitterdata/bluesky/`: Bluesky comparison collector, same reply table with `platform = bluesky` ([mapping](docs/bluesky_mapping.md)).
 - `analysis-pipeline/`: runs the pre-registered tests (T1 to T3, T9, T10, O1, O2) and exploratory tests A1 to A9 on many reply tables ([README](analysis-pipeline/README.md)).
 - `coding-tool/`: blind reply coding tool (human and volunteer coders, free local AI coders, Krippendorff's alpha). Coder workflow: [coding-tool/docs/second-coder-protocol.md](coding-tool/docs/second-coder-protocol.md).
@@ -40,6 +41,8 @@ pip install -e ".[test]"
 ```
 
 ### Capture a thread
+
+Fastest: use the capture recorder ([capture-extension/README.md](capture-extension/README.md)). By hand:
 
 1. Open the thread on x.com, open dev tools (F12), Network tab, filter `TweetDetail`.
 2. Pick the sort (Relevance, Recent, Likes), reload, and scroll to load the replies you want.
