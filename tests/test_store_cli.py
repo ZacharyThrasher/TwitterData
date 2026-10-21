@@ -66,9 +66,62 @@ def test_summary_window_drops_stale_campaigns(tmp_path):
     assert [r["campaign_id"] for r in rows] == ["vyro:Mm55Nn44"]
 
 
-def test_fetch_refuses_when_terms_forbid(tmp_path, capsys):
-    assert cli.main(["fetch", "--source", "vyro", "--data", str(tmp_path)]) == 3
-    assert "automated fetching is off" in capsys.readouterr().err
+def test_fetch_source_board_then_new_detail_pages(tmp_path):
+    import io
+    import urllib.error
+
+    from clip_monitor.fetch import PoliteFetcher
+    from clip_monitor.sources import Source
+
+    board = (FIXTURES / "vyro_board.html").read_bytes()
+    detail = (FIXTURES / "vyro_detail.html").read_bytes()
+    sitemap = b"""<urlset>
+<url><loc>https://vyro.com/campaigns/debate-night-clips-Ab12Cd34</loc></url>
+<url><loc>https://vyro.com/campaigns/rally-highlights-Mm55Nn44</loc></url>
+<url><loc>https://vyro.com/campaigns/ended-Gg00Hh00</loc></url>
+</urlset>"""
+    pages = {
+        "https://vyro.com/robots.txt": b"User-agent: *\nAllow: /\n",
+        "https://vyro.com/campaigns": board,
+        "https://vyro.com/sitemap/campaigns.xml": sitemap,
+        "https://vyro.com/campaigns/rally-highlights-Mm55Nn44": detail,
+    }
+    fetched = []
+
+    class Resp(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    class Opener:
+        def open(self, req, timeout=None):
+            fetched.append(req.full_url)
+            if req.full_url not in pages:
+                raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)
+            return Resp(pages[req.full_url])
+
+    src = Source(key="vyro", name="Vyro", access="public_listing", parser="vyro", automated_allowed=True,
+                 listing_urls=("https://vyro.com/campaigns",),
+                 discovery_urls=("https://vyro.com/sitemap/campaigns.xml",))
+    fetcher = PoliteFetcher(min_interval=0, opener=Opener(), sleep=lambda s: None)
+    store = Store(tmp_path)
+    failures = cli.fetch_source(store, fetcher, src, now=lambda: "2026-10-21T12:00:00Z")
+    assert failures == 0  # the ended campaign's 404 is not a failure
+    # The board already covered debate-night, so only the other two detail pages are requested.
+    assert "https://vyro.com/campaigns/debate-night-clips-Ab12Cd34" not in fetched
+    assert "https://vyro.com/campaigns/rally-highlights-Mm55Nn44" in fetched
+    snaps = store.snapshots()
+    assert [s["method"] for s in snaps] == ["fetch", "fetch"]
+    assert {r["campaign_id"] for r in store.rows()} >= {"vyro:Ab12Cd34", "vyro:Mm55Nn44"}
+
+
+def test_fetch_requires_a_source_or_all(tmp_path):
+    import pytest
+
+    with pytest.raises(SystemExit):
+        cli.main(["fetch", "--data", str(tmp_path)])
 
 
 def test_tag_accounts_cli(tmp_path, capsys):

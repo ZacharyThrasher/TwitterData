@@ -13,9 +13,11 @@ from __future__ import annotations
 import argparse
 import csv
 import glob
+import html
 import re
 import statistics
 import sys
+import urllib.error
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -114,24 +116,81 @@ def _expand(patterns: list) -> list:
     return out
 
 
+def sitemap_urls(xml: str) -> list:
+    return [html.unescape(u.strip()) for u in re.findall(r"<loc>\s*([^<]+?)\s*</loc>", xml)]
+
+
+def fetch_source(store: Store, fetcher: PoliteFetcher, source, max_details: int = 40, now=None) -> int:
+    """Fetch one source's listing pages, then detail pages found through its
+    discovery URLs that the listings did not already cover. Returns the number
+    of URLs that failed."""
+    now = now or (lambda: _utc_iso(datetime.now(timezone.utc).timestamp()))
+    fetcher.check_source(source)
+    failures = 0
+    seen = set()
+
+    def grab(url: str) -> None:
+        nonlocal failures
+        try:
+            raw = fetcher.fetch(source, url)
+        except NotPermitted:
+            raise
+        except urllib.error.HTTPError as e:
+            if e.code in (404, 410):  # sitemaps list ended campaigns that are gone
+                print(f"{url}: gone ({e.code})")
+                return
+            failures += 1
+            print(f"{url}: failed (HTTP {e.code})", file=sys.stderr)
+            return
+        except Exception as e:  # network errors: log, carry on with the next URL
+            failures += 1
+            print(f"{url}: failed ({type(e).__name__}: {e})", file=sys.stderr)
+            return
+        stored, campaigns = snapshot_page(
+            store, source.key, raw, now(), "fetch", url=url
+        )
+        seen.update(c.url for c in campaigns)
+        print(f"{url}: {len(campaigns)} campaigns, {'stored' if stored else 'unchanged'}")
+
+    for url in source.listing_urls:
+        grab(url)
+    details = []
+    for disc in source.discovery_urls:
+        try:
+            xml = fetcher.fetch(source, disc).decode("utf-8", "replace")
+        except NotPermitted:
+            raise
+        except Exception as e:
+            failures += 1
+            print(f"{disc}: failed ({type(e).__name__}: {e})", file=sys.stderr)
+            continue
+        details += [u for u in sitemap_urls(xml) if u not in seen and u not in details]
+    if len(details) > max_details:
+        print(f"{len(details)} detail pages found; fetching the first {max_details}", file=sys.stderr)
+    for url in details[:max_details]:
+        grab(url)
+    return failures
+
+
 def cmd_fetch(args) -> int:
     store = Store(args.data)
-    source = SOURCES.get(args.source)
-    if not source or not source.collectable:
-        print(f"Unknown or non-collectable source: {args.source}", file=sys.stderr)
-        return 2
+    if args.all:
+        sources = [s for s in SOURCES.values() if s.collectable and s.automated_allowed]
+    else:
+        source = SOURCES.get(args.source or "")
+        if not source or not source.collectable:
+            print(f"Unknown or non-collectable source: {args.source}", file=sys.stderr)
+            return 2
+        sources = [source]
     fetcher = PoliteFetcher(min_interval=args.min_interval)
-    try:
-        fetcher.check_source(source)
-        for url in source.listing_urls:
-            raw = fetcher.fetch(source, url)
-            observed = _utc_iso(datetime.now(timezone.utc).timestamp())
-            stored, campaigns = snapshot_page(store, source.key, raw, observed, "fetch", url=url)
-            print(f"{url}: {len(campaigns)} campaigns, {'stored' if stored else 'unchanged'}")
-    except NotPermitted as e:
-        print(f"Not fetching: {e}", file=sys.stderr)
-        return 3
-    return 0
+    failures = 0
+    for source in sources:
+        try:
+            failures += fetch_source(store, fetcher, source, max_details=args.max_details)
+        except NotPermitted as e:
+            print(f"Not fetching: {e}", file=sys.stderr)
+            return 3
+    return 1 if failures else 0
 
 
 def current_view(rows: list, window_days: float = 7.0) -> dict:
@@ -274,8 +333,11 @@ def build_parser() -> argparse.ArgumentParser:
     pi.add_argument("--data", default=DEFAULT_DATA)
     pi.set_defaults(func=cmd_ingest)
 
-    pf = sub.add_parser("fetch", help="fetch listings directly (only where permitted)")
-    pf.add_argument("--source", required=True, choices=sorted(k for k, s in SOURCES.items() if s.collectable))
+    pf = sub.add_parser("fetch", help="fetch listings directly (sources with automated collection on)")
+    which = pf.add_mutually_exclusive_group(required=True)
+    which.add_argument("--source", choices=sorted(k for k, s in SOURCES.items() if s.collectable))
+    which.add_argument("--all", action="store_true", help="every source with automated collection switched on")
+    pf.add_argument("--max-details", type=int, default=40, help="cap on detail pages per source per run")
     pf.add_argument("--min-interval", type=float, default=10.0, help="seconds between requests per host")
     pf.add_argument("--data", default=DEFAULT_DATA)
     pf.set_defaults(func=cmd_fetch)
