@@ -59,6 +59,9 @@ class Client:
         self._last: float | None = None
         self.requests = 0
 
+    def now(self) -> datetime:
+        return self._now()
+
     def _wait_turn(self) -> None:
         if self._last is not None:
             gap = self.min_interval - (self._clock() - self._last)

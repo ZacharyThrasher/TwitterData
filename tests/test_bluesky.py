@@ -267,6 +267,25 @@ def test_synthetic_edge_cases():
     assert extras["p6"]["hidden_by_threadgate"] is True
 
 
+def test_descendants_of_skipped_replies_are_skipped():
+    b = synthetic_bundle()
+    thread = b.responses[0]["body"]["thread"]
+    # Make reply p1 unavailable: its descendants p2 and p3 must not be attached to another module.
+    thread[2]["value"] = {"$type": "app.bsky.unspecced.defs#threadItemBlocked"}
+    result = build_rows(b, SALT, "syn.json")
+    keys = [r["tweet_id"].rsplit("/", 1)[-1] for r in result.rows]
+    assert keys == ["p4", "p5", "p1", "p6", "p7"]  # p1 still appears where the API listed it again
+    assert result.stats["orphans_skipped"] == 2
+    assert [r["module_position"] for r in result.rows] == [0, 0, 0, 0, 0]
+
+
+def test_bad_created_at_keeps_the_row():
+    b = synthetic_bundle()
+    b.responses[0]["body"]["thread"][2]["value"]["post"]["record"]["createdAt"] = "2024-02-30T00:00:00Z"
+    rows = build_rows(b, SALT, "syn.json").rows
+    assert rows[0]["created_at_utc"] is None and len(rows) == 7
+
+
 def test_focal_post_hidden_from_logged_out_viewers_is_an_error():
     b = synthetic_bundle()
     b.responses[0]["body"]["thread"][1]["value"] = {"$type": "app.bsky.unspecced.defs#threadItemNoUnauthenticated"}
@@ -276,7 +295,9 @@ def test_focal_post_hidden_from_logged_out_viewers_is_an_error():
 
 def test_parse_ts_handles_bluesky_variants():
     assert parse_ts("2026-10-20T10:00:00Z") == datetime(2026, 10, 20, 10, tzinfo=timezone.utc)
-    assert parse_ts("2026-10-20T10:00:00.5-0130").minute == 30
+    assert parse_ts("2026-10-20T10:00:00.5-01:30").minute == 30
+    assert parse_ts("2024-02-30T00:00:00Z") is None  # client-set nonsense must not abort a capture
+    assert parse_ts("0001-01-01T00:00:00+01:00") is None
     assert parse_ts("2026-10-20T10:00:00") == datetime(2026, 10, 20, 10, tzinfo=timezone.utc)
     assert parse_ts("yesterday") is None and parse_ts(None) is None
 
@@ -356,6 +377,9 @@ class ReplayClient:
         self.calls = []
         self.requests = 0
 
+    def now(self):
+        return datetime(2026, 10, 21, tzinfo=timezone.utc)
+
     def get(self, endpoint, params):
         from twitterdata.bluesky.client import Response
         self.calls.append((endpoint, params))
@@ -388,6 +412,19 @@ def test_collector_request_plan():
     assert bundle.anchor_uri.startswith("at://did:plc:fx")
     rows = build_rows(bundle, SALT, "b.json").rows
     assert len(rows) == len(rows_of(RELEVANCE).rows)
+
+
+def test_collector_reuses_profiles_across_sorts():
+    client = ReplayClient(RELEVANCE)
+    collector = Collector(client)
+    anchor = load_bundle(RELEVANCE).anchor_uri
+    collector.collect(anchor, "relevance")
+    first = [c[0] for c in client.calls].count(PROFILES)
+    client.calls.clear()
+    bundle = collector.collect(anchor, "recent")
+    assert [c[0] for c in client.calls].count(PROFILES) == 0 and first > 0
+    rows = build_rows(bundle, SALT, "b.json").rows
+    assert all(r["author_followers"] is not None for r in rows)
 
 
 def test_collector_options_skip_fold_and_profiles():
@@ -460,3 +497,30 @@ def test_cli_collect_with_replayed_api(tmp_path, monkeypatch, capsys):
 def test_cli_collect_rejects_capture_id_for_many(tmp_path):
     assert main(["bluesky", "collect", "at://did:plc:x/app.bsky.feed.post/a", "--sort", "relevance",
                  "--sort", "recent", "--capture-id", "c", "-o", str(tmp_path / "o.csv")]) == 2
+
+
+def test_cli_parse_refuses_to_overwrite_a_bundle(tmp_path):
+    bundle = tmp_path / "b.json"
+    bundle.write_text(open(RELEVANCE, encoding="utf-8").read(), encoding="utf-8")
+    assert main(["bluesky", "parse", str(bundle), "-o", str(bundle)]) == 2
+    assert load_bundle(str(bundle)).anchor_uri
+
+
+def test_cli_collect_failure_leaves_old_output(tmp_path, monkeypatch):
+    class Down(ReplayClient):
+        def get(self, endpoint, params):
+            raise BlueskyError("AppView down")
+
+    monkeypatch.setattr(bluesky_cli, "Client", lambda **kw: Down(RELEVANCE, **kw))
+    out = tmp_path / "o.csv"
+    out.write_text("previous run\n", encoding="utf-8")
+    assert main(["bluesky", "collect", "at://did:plc:x/app.bsky.feed.post/a", "-o", str(out),
+                 "--raw-dir", str(tmp_path / "raw")]) == 1
+    assert out.read_text(encoding="utf-8") == "previous run\n"
+
+
+def test_cli_reports_bad_salt_file(tmp_path, monkeypatch):
+    monkeypatch.delenv(SALT_ENV)
+    empty = tmp_path / "salt"
+    empty.write_text("", encoding="utf-8")
+    assert main(["bluesky", "parse", RELEVANCE, "-o", str(tmp_path / "o.csv"), "--salt-file", str(empty)]) == 2

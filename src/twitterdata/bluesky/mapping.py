@@ -18,15 +18,15 @@ docs/bluesky_mapping.md. In short:
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from urllib.parse import urlparse
 
 from twitterdata.bluesky.bundle import PROFILES, THREAD, THREAD_OTHER, Bundle
 from twitterdata.capture.parser import iso_utc
 from twitterdata.privacy import pseudonym, scrub_rows
 from twitterdata.schema import COLUMN_NAMES, SCHEMA_VERSION
+from twitterdata.timeutil import parse_iso_utc
 
 PLATFORM = "bluesky"
 SORTS = {"relevance": "top", "recent": "newest"}  # reply table value -> Bluesky sort
@@ -41,7 +41,6 @@ EXTRA_COLUMNS = (
     "embed_type",
 )
 
-_TS = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:?\d{2})?$")
 
 
 @dataclass
@@ -52,21 +51,11 @@ class MapResult:
 
 
 def parse_ts(value: str | None) -> datetime | None:
-    """Lenient ISO 8601 parser; Bluesky createdAt is client-set and varies in precision."""
-    if not value:
+    """Lenient ISO 8601 parser; Bluesky createdAt is client-set, so bad values give None."""
+    try:
+        return parse_iso_utc(value)
+    except (OverflowError, ValueError):
         return None
-    m = _TS.match(value.strip())
-    if not m:
-        return None
-    base, frac, tz = m.groups()
-    micro = int((frac or "0")[:6].ljust(6, "0"))
-    dt = datetime.fromisoformat(base).replace(microsecond=micro)
-    if tz in (None, "Z"):
-        return dt.replace(tzinfo=timezone.utc)
-    sign = 1 if tz[0] == "+" else -1
-    digits = tz[1:].replace(":", "")
-    offset = sign * (int(digits[:2]) * 60 + int(digits[2:]))
-    return (dt - timedelta(minutes=offset)).replace(tzinfo=timezone.utc)
 
 
 def rkey(uri: str) -> str:
@@ -135,7 +124,7 @@ def build_rows(bundle: Bundle, salt: bytes, capture_file: str, include_text: boo
     others = bundle.responses_for(THREAD_OTHER)
     profiles = _profiles(bundle)
     stats = {"responses": len(bundle.responses), "unavailable": 0, "duplicates": 0,
-             "main_items": 0, "other_items": 0, "parents_skipped": 0}
+             "main_items": 0, "other_items": 0, "parents_skipped": 0, "orphans_skipped": 0}
 
     focal_item = next((i for i in main["body"].get("thread", []) if i.get("depth") == 0), None)
     if focal_item is None or focal_item["value"].get("$type") != POST_ITEM:
@@ -176,18 +165,26 @@ def build_rows(bundle: Bundle, salt: bytes, capture_file: str, include_text: boo
     rows, extras, seen = [], [], set()
     display_index = display_rank = module_position = 0
     for page_index, section, resp in pages:
+        skip_deeper_than = None  # depth of the last skipped item; its descendants are skipped too
         for item in resp["body"].get("thread", []):
             depth = item.get("depth", 0)
             if depth <= 0:
                 stats["parents_skipped"] += depth < 0
                 continue
+            if skip_deeper_than is not None:
+                if depth > skip_deeper_than:
+                    stats["orphans_skipped"] += 1
+                    continue
+                skip_deeper_than = None
             value = item.get("value", {})
             if value.get("$type") != POST_ITEM:
                 stats["unavailable"] += 1
+                skip_deeper_than = depth
                 continue
             post = value["post"]
             if post["uri"] in seen:
                 stats["duplicates"] += 1
+                skip_deeper_than = depth
                 continue
             seen.add(post["uri"])
             stats["main_items" if page_index == 0 else "other_items"] += 1

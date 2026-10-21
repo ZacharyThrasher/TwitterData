@@ -12,7 +12,7 @@ from twitterdata.bluesky.bundle import load_bundle, save_bundle
 from twitterdata.bluesky.client import PUBLIC_APPVIEW, BlueskyError, Client
 from twitterdata.bluesky.collector import MAX_BELOW, MAX_BRANCHING, Collector
 from twitterdata.bluesky.mapping import EXTRA_COLUMNS, SORTS, build_rows
-from twitterdata.output import WRITERS
+from twitterdata.output import WRITERS, _csv_cell
 from twitterdata.privacy import DEFAULT_SALT_FILE, SALT_ENV, load_salt
 
 DEFAULT_RAW_DIR = os.path.join("data", "raw", "bluesky")
@@ -72,8 +72,7 @@ def _write_extras(extras: list[dict], path: str) -> None:
         w = csv.writer(f)
         w.writerow(EXTRA_COLUMNS)
         for e in extras:
-            w.writerow(["" if e.get(k) is None else ("true" if e[k] is True else "false" if e[k] is False else e[k])
-                        for k in EXTRA_COLUMNS])
+            w.writerow([_csv_cell(e.get(k)) for k in EXTRA_COLUMNS])
 
 
 def _report(name: str, stats: dict) -> None:
@@ -99,6 +98,22 @@ def _finish(args, rows, extras) -> int:
     return 0
 
 
+def _salt(args) -> bytes | None:
+    try:
+        return load_salt(args.salt_file)
+    except (OSError, ValueError) as e:
+        print(f"error: could not load the hash salt: {e}", file=sys.stderr)
+        return None
+
+
+def _unused_path(directory: str, stem: str) -> str:
+    path, n = os.path.join(directory, f"{stem}.json"), 1
+    while os.path.exists(path):
+        n += 1
+        path = os.path.join(directory, f"{stem}-{n}.json")
+    return path
+
+
 def _targets(args) -> list[str]:
     targets = list(args.targets)
     if args.from_file:
@@ -115,7 +130,9 @@ def _cmd_collect(args) -> int:
     if args.capture_id and len(targets) * len(sorts) > 1:
         print("--capture-id applies to one capture; drop it to get bsky_{rkey}_{sort} ids", file=sys.stderr)
         return 2
-    salt = load_salt(args.salt_file)
+    salt = _salt(args)
+    if salt is None:
+        return 2
     client = Client(base_url=args.appview, min_interval=max(args.min_interval, 0.2))
     collector = Collector(client, below=args.below, branching=args.branching,
                           include_other=not args.no_other, include_profiles=not args.no_profiles)
@@ -129,11 +146,11 @@ def _cmd_collect(args) -> int:
                 failures += 1
                 continue
             stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-            path = os.path.join(args.raw_dir, f"{bundle.capture_id}_{stamp}.json")
-            save_bundle(bundle, path)
             try:
+                path = _unused_path(args.raw_dir, f"{bundle.capture_id}_{stamp}")
+                save_bundle(bundle, path)
                 result = build_rows(bundle, salt, os.path.basename(path), include_text=args.include_text)
-            except ValueError as e:
+            except (ValueError, KeyError, OSError) as e:
                 print(f"error: {target} ({sort_order}): {e}", file=sys.stderr)
                 failures += 1
                 continue
@@ -141,6 +158,9 @@ def _cmd_collect(args) -> int:
             rows += result.rows
             extras += result.extras
     print(f"{client.requests} API requests", file=sys.stderr)
+    if not rows and failures:
+        print(f"nothing collected; left {args.output} untouched", file=sys.stderr)
+        return 1
     _finish(args, rows, extras)
     return 1 if failures else 0
 
@@ -149,7 +169,13 @@ def _cmd_parse(args) -> int:
     if args.capture_id and len(args.bundles) > 1:
         print("--capture-id applies to one bundle", file=sys.stderr)
         return 2
-    salt = load_salt(args.salt_file)
+    written = {os.path.abspath(p) for p in (args.output, _extras_path(args, args.output)) if p}
+    if written & {os.path.abspath(b) for b in args.bundles}:
+        print("refusing to write output over a bundle file", file=sys.stderr)
+        return 2
+    salt = _salt(args)
+    if salt is None:
+        return 2
     rows, extras = [], []
     for path in args.bundles:
         try:

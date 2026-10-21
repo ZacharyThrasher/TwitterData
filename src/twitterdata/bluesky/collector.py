@@ -47,6 +47,7 @@ class Collector:
         self.client, self.below, self.branching = client, below, branching
         self.include_other, self.include_profiles = include_other, include_profiles
         self._did_cache: dict[str, str] = {}
+        self._profile_cache: dict[str, dict] = {}  # did -> profile, reused across sorts of one run
 
     def _record(self, responses: list, endpoint: str, params: dict) -> dict:
         resp = self.client.get(endpoint, params)
@@ -76,8 +77,17 @@ class Collector:
             self._record(responses, THREAD_OTHER, {"anchor": anchor})
         if self.include_profiles:
             dids = _author_dids(responses)
-            for start in range(0, len(dids), PROFILE_BATCH):
-                self._record(responses, PROFILES, {"actors": dids[start:start + PROFILE_BATCH]})
+            cached = [self._profile_cache[d] for d in dids if d in self._profile_cache]
+            if cached:
+                # Profiles fetched earlier in this run (another sort of the same thread), kept so the
+                # bundle still parses offline on its own.
+                responses.append(response_record(PROFILES, {"actors": [p["did"] for p in cached], "cached": True},
+                                                 200, self.client.now(), {"profiles": cached}))
+            missing = [d for d in dids if d not in self._profile_cache]
+            for start in range(0, len(missing), PROFILE_BATCH):
+                body = self._record(responses, PROFILES, {"actors": missing[start:start + PROFILE_BATCH]})
+                for profile in body.get("profiles", []):
+                    self._profile_cache[profile["did"]] = profile
         return Bundle(anchor_uri=anchor, bluesky_sort=SORTS[sort_order], sort_order=sort_order,
                       responses=responses, age_bucket=age_bucket, viewer_label=viewer_label, target=target,
                       capture_id=capture_id or default_capture_id(anchor, sort_order, age_bucket, viewer_label))
