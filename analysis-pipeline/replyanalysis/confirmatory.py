@@ -15,7 +15,7 @@ import pandas as pd
 
 from . import exposure
 from .models import Estimate, NotEstimable, holm, logit_or, mixed_lm, ols, rank_ordered_logit
-from .prepare import AnalysisConfig
+from .prepare import AnalysisConfig, main_frame
 
 # Smallest effects of interest (pre-registration section 2).
 SESOI_RANK_PP = 5.0
@@ -283,6 +283,29 @@ def test_o2(t: pd.DataFrame, cfg: AnalysisConfig) -> TestResult:
 # ---------------------------------------------------------------- family
 
 
+def _robustness_h24(results: list[TestResult], sessions: pd.DataFrame, cfg: AnalysisConfig) -> None:
+    """Pre-registration section 5: the reply-level models refit on the 24h captures, as robustness only."""
+    if cfg.main_age == "h24":
+        return
+    m24 = main_frame(sessions, cfg, age="h24")
+    if m24.empty:
+        return
+    for r in results:
+        try:
+            if r.id == "T1":
+                est = mixed_lm(m24, f"rank_pct ~ premium + {_rhs(_controls(m24))}", "study_thread_id", "premium",
+                               cfg.alpha, "percentile points of rank height")
+            elif r.id in ("T2", "T3", "T10"):
+                d = m24[m24["lang"].isin(["en", cfg.second_language])] if r.id == "T10" else m24
+                inter = {"T2": None, "T3": "large_root", "T10": "second_lang"}[r.id]
+                est = _incivility_model(d, cfg, cfg.incivility_col, inter)
+            else:
+                continue
+        except NotEstimable:
+            continue
+        r.supporting["robustness_h24"] = est
+
+
 def run_all(main: pd.DataFrame, sessions: pd.DataFrame, threads: pd.DataFrame, cfg: AnalysisConfig) -> list[TestResult]:
     results = [
         test_t1(main, sessions, cfg),
@@ -293,6 +316,7 @@ def run_all(main: pd.DataFrame, sessions: pd.DataFrame, threads: pd.DataFrame, c
         test_o1(threads, cfg),
         test_o2(threads, cfg),
     ]
+    _robustness_h24(results, sessions, cfg)
     adjusted = holm({r.id: r.p_for_family for r in results}, cfg.alpha)
     for r in results:
         r.p_holm = adjusted[r.id]

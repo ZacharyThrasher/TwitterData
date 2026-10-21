@@ -47,3 +47,14 @@ def test_secondary_toxicity_models_run(effect_world):
     _, results = effect_world
     t2 = by_id(results)["T2"]
     assert t2["supporting"]["toxicity_score"]["estimate"] < 0
+
+
+def test_capture_plan_v11_and_24h_robustness(effect_world):
+    paths, results = effect_world
+    import pandas as pd
+    caps = pd.read_csv(paths["captures"])
+    assert set(caps["age_hours"]) == {6, 24} and set(caps["sort"]) == {"relevance", "likes"}
+    t = by_id(results)
+    assert t["T1"]["supporting"]["robustness_h24"]["estimate"] > 0
+    assert t["T2"]["supporting"]["robustness_h24"]["estimate"] < 0
+    assert "recent_contrast" not in t["T1"]["supporting"]

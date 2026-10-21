@@ -20,8 +20,9 @@ from .schema import column_names
 TOPICS = ["politics_government", "social_culture_war", "streamer_gaming", "sports", "news_events", "entertainment_celebrity"]
 ACCOUNT_TYPES = ["paid_clipper", "organic_creator", "news_official"]
 POLITICS = ["left", "right", "none_unclear"]
-AGES = {"h01": 1.0, "h06": 6.0, "h24": 24.0}
-SORTS = ["relevance", "likes", "recent"]
+# Capture plan v1.1 (pre-registration amendment 2026-10-21): 6h and 24h, Relevance and Likes.
+AGES = {"h06": 6.0, "h24": 24.0}
+SORTS = ["relevance", "likes"]
 WORDS = ("money award stream clip charity rigged show friend stunt fair joke point really never always "
          "people think honest views donate offer cringe based ratio take bad good sure").split()
 
@@ -170,7 +171,6 @@ def generate(n_threads: int = 40, seed: int = 1, effects: Effects | None = None,
             orders = {
                 "relevance": rel,
                 "likes": sorted(visible, key=lambda p: -p["likes"]),
-                "recent": sorted(visible, key=lambda p: -p["created_h"]),
             }
             for sort in SORTS:
                 cid = f"{tid}_{age}_{sort}_{viewer}"
