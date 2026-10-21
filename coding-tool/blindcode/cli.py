@@ -42,6 +42,14 @@ def make_coder(args):
         return CardiffCoder(threshold=args.threshold)
     if args.backend == "keyword":
         return KeywordCoder()
+    if args.backend == "typesafe":
+        from .ai.typesafe import TypeSafeCoder
+        n = len(args._items) if args.limit is None else min(args.limit, len(args._items))
+        print(f"PAID backend (TypeSafe Jev, input tokens billed). Model {args.jev_model}, {n} items.")
+        if not args.allow_paid:
+            print("Dry run only. Re-run with --allow-paid and BLINDCODE_ALLOW_PAID=1 once the spend is approved.")
+            return None
+        return TypeSafeCoder(args.jev_model, threshold=args.threshold, allow_paid=True)
     if args.backend == "replay":
         if not args.replay_from:
             raise SystemExit("--replay-from is required for the replay backend")
@@ -175,9 +183,9 @@ def main(argv: list[str] | None = None) -> int:
     c.set_defaults(fn=cmd_code)
 
     def ai_args(a, default_backend="ollama"):
-        a.add_argument("--backend", choices=["ollama", "detoxify", "cardiff", "keyword", "replay", "anthropic"],
+        a.add_argument("--backend", choices=["ollama", "detoxify", "cardiff", "keyword", "replay", "typesafe", "anthropic"],
                        default=default_backend,
-                       help="ollama/detoxify/cardiff run free on this machine; keyword is a test baseline; anthropic is PAID")
+                       help="ollama/detoxify/cardiff run free on this machine; keyword is a test baseline; typesafe and anthropic are PAID")
         a.add_argument("--coder", help="coder id to store under (default: backend name)")
         a.add_argument("--store", default="work/coders")
         a.add_argument("--limit", type=int)
@@ -187,6 +195,7 @@ def main(argv: list[str] | None = None) -> int:
         a.add_argument("--digest", help="ollama: required model digest prefix (pin)")
         a.add_argument("--threshold", type=float, default=0.5, help="detoxify/cardiff score threshold")
         a.add_argument("--replay-from", help="replay backend: coder id whose saved raw outputs to replay")
+        a.add_argument("--jev-model", default="jev-latest", help="typesafe backend only")
         a.add_argument("--model", default="claude-opus-5-5", help="anthropic backend only")
         a.add_argument("--effort", default="medium", choices=["low", "medium", "high", "xhigh", "max"])
         a.add_argument("--allow-paid", action="store_true")

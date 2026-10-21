@@ -71,6 +71,7 @@ Sessions resume where they stopped.
 | `cardiff` | free, local | incivility, hate proxy | cardiffnlp Twitter RoBERTa models. `pip install transformers torch`. |
 | `keyword` | free | most fields, crudely | Test baseline only. **Not** a valid research coder. |
 | `replay` | free | as saved | Re-parses raw outputs saved by an earlier AI run (`--replay-from <coder>`). |
+| `typesafe` | **paid** (input tokens) | every coded field | TypeSafe Jev: one yes/no or pick-one question per field, with calibrated probabilities. Same `--allow-paid` gate. Key in `TYPESAFE_API_KEY`. |
 | `anthropic` | **paid** | every field | Claude, pinned model. Off by default; see below. |
 
 LLM backends (`ollama`, `anthropic`) first write a short `rationale` (what the reply claims and
