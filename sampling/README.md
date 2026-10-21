@@ -12,7 +12,7 @@ Python 3.10+, standard library only. Tests: `python -m unittest discover samplin
 | `sessions.csv` | discovery session | When we look for new threads (random, all times of day) |
 | `candidates.csv` | screened post | Every post we considered, the decision, and the reason |
 | `threads.csv` | selected thread | Its strata, why it was selected, and its status |
-| `captures.csv` | scheduled capture | 9 per thread (1h, 6h, 24h x Relevance, Recent, Likes): window, status, output file |
+| `captures.csv` | scheduled capture | 4 per thread (6h, 24h x Relevance, Likes): window, status, output file |
 
 ## Daily workflow
 
@@ -30,8 +30,8 @@ python sampling/tracker.py screen 2000000000000000001 --handle SomeHandle --foll
 python sampling/tracker.py due
 
 # after each capture (point at the parser output, never a raw .har)
-python sampling/tracker.py mark 2000000000000000001_h01_relevance_A --status done \
-  --file-ref captures/2000000000000000001_h01_relevance_A.csv --n-replies 187
+python sampling/tracker.py mark 2000000000000000001_h06_relevance_A --status done \
+  --file-ref captures/2000000000000000001_h06_relevance_A.csv --n-replies 187
 
 # if a thread disappears
 python sampling/tracker.py drop 2000000000000000001 --reason deleted
@@ -43,7 +43,7 @@ python sampling/tracker.py validate
 
 ## Rules the tool enforces
 
-- **Eligibility:** original post or quote, at most 40 minutes old when found, at least 15 replies, poster has 10k+ followers, not protected, poster not already sampled.
+- **Eligibility:** original post or quote, at most 2 hours old when found, at least 15 replies, poster has 10k+ followers, not protected, poster not already sampled.
 - **Selection:** first eligible post whose cell has room. 18 English cells (topic x account type) of 7, plus 18 Spanish cells of 1, for 144 threads.
 - **Balance:** at least 50 threads per follower band; left and right posters each at least 20, then neither more than 1.5 times the other.
 - **Captures:** a capture outside its window is recorded as `late`, not discarded.

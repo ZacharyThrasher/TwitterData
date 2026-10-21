@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Draft v1.0, written 2026-10-21. Freeze before the first thread is selected, then post to OSF. |
+| Status | Draft v1.1 (2026-10-21: capture plan trimmed before collection, see section 8). v1.0 written 2026-10-21. Freeze before the first thread is selected, then post to OSF. |
 | Owner | Zachary Thrasher |
 | Sampling tool | `sampling/tracker.py`, rules in `sampling/config.json` |
 | Reply data | Reply table produced by the capture parser (`src/twitterdata/capture/`): `docs/reply_table_schema.md` and `schema/reply_table.v1.json`. This document uses that schema's field names and does not redefine them. |
@@ -13,7 +13,7 @@
 ## 0. One-screen summary
 
 - **Question.** Does X's design pay for posts that provoke anger, and does paid placement (Premium reply priority) decide whose replies people see?
-- **What we collect.** 144 viral threads, stratified by topic, poster type (paid clipper, organic creator, news or official) and poster politics. Each thread is captured at 1, 6 and 24 hours after posting, under the Relevance, Recent and Likes sorts. That is 9 captures per thread, 1,296 in total.
+- **What we collect.** 144 viral threads, stratified by topic, poster type (paid clipper, organic creator, news or official) and poster politics. Each thread is captured at 6 and 24 hours after posting, under the Relevance and Likes sorts. That is 4 captures per thread, 576 in total (trimmed from 1,296 before collection; see section 8).
 - **What we test.** Seven confirmatory predictions: Premium-first placement (T1), toxic replies ranked lower within a tier (T2), a stronger toxic-reply penalty under very large accounts (T3), big accounts escaping the insult penalty on their own posts (T9), the toxic-reply penalty being weaker in Spanish than English (T10), and two poster-level outrage predictions (O1, O2).
 - **What would change our minds.** Each prediction has a stated pass or fail rule below. Null results get reported with the same prominence as positive ones.
 - **When we stop.** When every cell is full, or 56 days after the first selection, whichever comes first. No outcome analysis before the stop.
@@ -82,7 +82,7 @@ Why 144: `data-and-methods.md` section 6.1 estimates 100 to 150 threads (about 3
 3. **Screening.** During a session the screener checks seed accounts (and, as a second source, Trending and Search) and logs every post that might qualify with `tracker.py screen`. Every screened post is recorded, including the ones that fail, with the reason.
 4. **Eligibility (all must hold):**
    - Original post or quote post, not a plain repost or a reply.
-   - At most 40 minutes old when found (so the 1h capture is reachable).
+   - At most 2 hours old when found (keeps selection early in the thread's life, well before the 6h capture).
    - At least 15 replies when found.
    - Poster has at least 10,000 followers and is not protected.
    - Poster not already in the sample.
@@ -94,12 +94,11 @@ Why 144: `data-and-methods.md` section 6.1 estimates 100 to 150 threads (about 3
 
 | Age | Window (relative to due time) | Sorts | Captures |
 |---|---|---|---|
-| 1 hour | 10 min early to 20 min late | Relevance, Recent, Likes | 3 |
-| 6 hours | 30 min early to 45 min late | Relevance, Recent, Likes | 3 |
-| 24 hours | 90 min early to 2 h late | Relevance, Recent, Likes | 3 |
+| 6 hours | 30 min early to 45 min late | Relevance, Likes | 2 |
+| 24 hours | 90 min early to 2 h late | Relevance, Likes | 2 |
 
-- Capture ids follow `{root_tweet_id}_h{01|06|24}_{relevance|recent|likes}_{viewer}`, for example `2000000000000000001_h06_likes_A`. The parser accepts this id verbatim as `capture_id`.
-- Within an age, the three sorts are taken back to back in a fixed order (Relevance, Likes, Recent) to keep them as close in time as possible.
+- Capture ids follow `{root_tweet_id}_h{06|24}_{relevance|likes}_{viewer}`, for example `2000000000000000001_h06_likes_A`. The parser accepts this id verbatim as `capture_id`.
+- Within an age, the two sorts are taken back to back in a fixed order (Relevance, then Likes) to keep them as close in time as possible.
 - A capture taken outside its window is kept and flagged `late`. Main analyses use on-time captures; a sensitivity analysis adds late ones.
 - `tracker.py due` lists what is open, coming up and overdue.
 
@@ -115,7 +114,7 @@ Why 144: `data-and-methods.md` section 6.1 estimates 100 to 150 threads (about 3
 
 | Event | What happens |
 |---|---|
-| Thread deleted, account protected or suspended, or 1h and 6h captures both fail, **before the 6h Relevance capture succeeds** | Thread status `dropped`. Its cell reopens and the next eligible post replaces it. |
+| Thread deleted, account protected or suspended, or both 6h captures fail, **before the 6h Relevance capture succeeds** | Thread status `dropped`. Its cell reopens and the next eligible post replaces it. |
 | Same events **after the 6h Relevance capture succeeds** | Thread status `partial`. Kept in the sample with the data it has. No replacement. |
 | Any other reason | Not allowed. A thread is never dropped because of what its replies contain. |
 
@@ -150,7 +149,7 @@ Reply-level fields come from the parser's reply table (`docs/reply_table_schema.
 
 ## 5. Analysis plan
 
-All confirmatory models use the Relevance sort at the 6h capture unless stated. 6h is chosen in advance as the main age because rank is settled but the thread is still active. 1h and 24h are reported as robustness.
+All confirmatory models use the Relevance sort at the 6h capture unless stated. 6h is chosen in advance as the main age because rank is settled but the thread is still active. 24h is reported as robustness (does the ranking pattern hold as the thread ages).
 
 ### 5.1 T1 Premium-first placement
 
@@ -160,7 +159,7 @@ All confirmatory models use the Relevance sort at the 6h capture unless stated. 
 
 ### 5.2 Sort contrast (supports T1)
 
-For each reply seen in both the Relevance and Likes captures at the same age: rank under Relevance minus rank under Likes. If Premium replies gain rank under Relevance relative to Likes, the boost is X's placement and not just popularity. Recent sort is a near-chronological baseline.
+For each reply seen in both the Relevance and Likes captures at the same age: rank under Relevance minus rank under Likes. If Premium replies gain rank under Relevance relative to Likes, the boost is X's placement and not just popularity. This contrast is the T1 falsification check and uses the 6h Likes capture. (A near-chronological Recent baseline was dropped in the 2026-10-21 amendment.)
 
 ### 5.3 T2, T3, T10 incivility and rank
 
@@ -184,7 +183,7 @@ For each reply seen in both the Relevance and Likes captures at the same age: ra
 
 ### 5.6 Exploratory (labelled as such)
 
-Premium x poster politics on the visible top 10 (the parent-thread tilt in `FINDINGS.md`), strict hate speech rates, brigade and coordination checks (`data-and-methods.md` 6.4), ad density, and change from 1h to 24h. None of these can confirm or refute H1 to H3.
+Premium x poster politics on the visible top 10 (the parent-thread tilt in `FINDINGS.md`), strict hate speech rates, brigade and coordination checks (`data-and-methods.md` 6.4), ad density, and change from 6h to 24h. None of these can confirm or refute H1 to H3.
 
 ---
 
@@ -218,7 +217,7 @@ Every change after freeze goes here with the date, what changed, why, and whethe
 
 | Date | Change | Reason | Outcome data seen? |
 |---|---|---|---|
-| | | | |
+| 2026-10-21 | **Pre-collection amendment (v1.1).** Capture plan trimmed from 9 to 4 captures per thread (1,296 to 576): dropped the 1h capture and the Recent sort; kept 6h and 24h under Relevance and Likes. Rules that depended on the 1h capture changed with it: discovery age limit raised from 40 minutes to 2 hours (3.3), early-failure drop rule now "both 6h captures fail" (3.6), robustness age is 24h only (5), Recent baseline removed from the sort contrast (5.2). Thread count, strata, quotas, predictions, pass/fail rules and stopping rules are unchanged. | Workload: 1,296 manual captures was not realistic for one person, and the 1h capture's 40-minute discovery rule was the hardest timing constraint. The confirmatory tests use 6h Relevance and the T1 falsifier uses 6h Likes, so neither loses data and power is unchanged (rationale in project file `capture/capture-rules-and-options.md`, section 4). Approved by Zachary 2026-10-21. | No. Made before the first thread was selected. |
 
 ---
 

@@ -46,23 +46,30 @@ class TrackerTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def test_target_is_144(self):
-        self.assertEqual(tracker.total_target(self.store.config), 144)
+    def test_target_is_144_threads_and_576_captures(self):
+        cfg = self.store.config
+        per_thread = len(cfg["capture"]["ages_hours"]) * len(cfg["capture"]["sorts"]) * len(cfg["capture"]["viewers"])
+        self.assertEqual(tracker.total_target(cfg), 144)
+        self.assertEqual(tracker.total_target(cfg) * per_thread, 576)
 
-    def test_selected_thread_gets_nine_captures_with_windows(self):
+    def test_two_hour_old_post_still_eligible(self):
+        screen(self.data, "120", "late_find", discovered="2026-11-02T13:55:00Z")
+        self.assertEqual(self.store.read("candidates")[0]["decision"], "selected")
+
+    def test_selected_thread_gets_four_captures_with_windows(self):
         code, out = screen(self.data, "111", "alice")
         self.assertEqual(code, 0)
         self.assertIn("selected", out)
         caps = self.store.read("captures")
-        self.assertEqual(len(caps), 9)
-        one = [c for c in caps if c["capture_id"] == "111_h01_relevance_A"][0]
-        self.assertEqual(one["due_utc"], "2026-11-02T13:00:00Z")
-        self.assertEqual(one["window_open_utc"], "2026-11-02T12:50:00Z")
-        self.assertEqual(one["window_close_utc"], "2026-11-02T13:20:00Z")
+        self.assertEqual(len(caps), 4)
+        one = [c for c in caps if c["capture_id"] == "111_h06_relevance_A"][0]
+        self.assertEqual(one["due_utc"], "2026-11-02T18:00:00Z")
+        self.assertEqual(one["window_open_utc"], "2026-11-02T17:30:00Z")
+        self.assertEqual(one["window_close_utc"], "2026-11-02T18:45:00Z")
         self.assertEqual(tracker.validate(self.store), [])
 
     def test_ineligible_is_logged_with_reasons_not_selected(self):
-        screen(self.data, "222", "bob", discovered="2026-11-02T13:30:00Z", replies=3)
+        screen(self.data, "222", "bob", discovered="2026-11-02T15:30:00Z", replies=3)
         cand = self.store.read("candidates")[0]
         self.assertEqual(cand["decision"], "ineligible")
         self.assertIn("too_old_at_discovery", cand["reason"])
@@ -104,16 +111,16 @@ class TrackerTest(unittest.TestCase):
 
     def test_mark_done_inside_and_outside_window(self):
         screen(self.data, "5000", "dave")
-        run(self.data, "mark", "5000_h01_relevance_A", "--status", "done", "--at", "2026-11-02T13:05:00Z",
-            "--file-ref", "captures/5000_h01_relevance_A.parquet")
-        run(self.data, "mark", "5000_h01_recent_A", "--status", "done", "--at", "2026-11-02T14:00:00Z")
+        run(self.data, "mark", "5000_h06_relevance_A", "--status", "done", "--at", "2026-11-02T18:05:00Z",
+            "--file-ref", "captures/5000_h06_relevance_A.parquet")
+        run(self.data, "mark", "5000_h06_likes_A", "--status", "done", "--at", "2026-11-02T19:30:00Z")
         caps = {c["capture_id"]: c for c in self.store.read("captures")}
-        self.assertEqual(caps["5000_h01_relevance_A"]["status"], "done")
-        self.assertEqual(caps["5000_h01_recent_A"]["status"], "late")
+        self.assertEqual(caps["5000_h06_relevance_A"]["status"], "done")
+        self.assertEqual(caps["5000_h06_likes_A"]["status"], "late")
 
     def test_mark_refuses_raw_har(self):
         screen(self.data, "6000", "erin")
-        code, out = run(self.data, "mark", "6000_h01_likes_A", "--status", "done", "--file-ref", "x/raw.HAR")
+        code, out = run(self.data, "mark", "6000_h06_likes_A", "--status", "done", "--file-ref", "x/raw.HAR")
         self.assertEqual(code, 2)
         self.assertIn(".har", out)
 
@@ -142,10 +149,10 @@ class TrackerTest(unittest.TestCase):
 
     def test_due_lists_open_and_overdue(self):
         screen(self.data, "9100", "ivy")
-        rows = tracker.cmd_due(self.store, type("A", (), {"now": "2026-11-02T13:30:00Z", "ahead": 0})())
+        rows = tracker.cmd_due(self.store, type("A", (), {"now": "2026-11-02T18:50:00Z", "ahead": 0})())
         states = {r[0] for r in rows}
         self.assertEqual(states, {"OVERDUE"})
-        rows = tracker.cmd_due(self.store, type("A", (), {"now": "2026-11-02T12:55:00Z", "ahead": 0})())
+        rows = tracker.cmd_due(self.store, type("A", (), {"now": "2026-11-02T17:55:00Z", "ahead": 0})())
         self.assertEqual({r[0] for r in rows}, {"OPEN"})
 
     def test_plan_sessions_is_reproducible_and_covers_day(self):
@@ -163,7 +170,7 @@ class TrackerTest(unittest.TestCase):
         screen(self.data, "9200", "jo")
         caps = self.store.read("captures")[:-1]
         self.store.write("captures", caps)
-        self.assertTrue(any("expected 9" in p for p in tracker.validate(self.store)))
+        self.assertTrue(any("expected 4" in p for p in tracker.validate(self.store)))
 
     def test_status_stop_rule_after_window(self):
         screen(self.data, "9300", "kim")
@@ -192,7 +199,7 @@ class TrackerTest(unittest.TestCase):
     def test_compressed_har_refused(self):
         screen(self.data, "9600", "mo")
         for ref in ("x/raw.har.gz", "x/raw.HAR.zip", "x/raw.har "):
-            code, _ = run(self.data, "mark", "9600_h01_likes_A", "--status", "done", "--file-ref", ref)
+            code, _ = run(self.data, "mark", "9600_h06_likes_A", "--status", "done", "--file-ref", ref)
             self.assertEqual(code, 2, ref)
 
     def test_no_selection_after_collection_window(self):
@@ -204,7 +211,7 @@ class TrackerTest(unittest.TestCase):
     def test_early_capture_failure_drops_and_reopens(self):
         screen(self.data, "9800", "pat")
         for c in self.store.read("captures"):
-            if c["age_hours"] in ("1", "6"):
+            if c["age_hours"] == "6":
                 run(self.data, "mark", c["capture_id"], "--status", "failed")
         t = self.store.read("threads")[0]
         self.assertEqual(t["status"], "dropped")
@@ -222,10 +229,10 @@ class TrackerTest(unittest.TestCase):
 
     def test_remark_clears_stale_fields(self):
         screen(self.data, "9910", "rae")
-        run(self.data, "mark", "9910_h01_likes_A", "--status", "done", "--at", "2026-11-02T13:00:00Z",
+        run(self.data, "mark", "9910_h06_likes_A", "--status", "done", "--at", "2026-11-02T18:00:00Z",
             "--file-ref", "captures/a.csv")
-        run(self.data, "mark", "9910_h01_likes_A", "--status", "failed")
-        c = [c for c in self.store.read("captures") if c["capture_id"] == "9910_h01_likes_A"][0]
+        run(self.data, "mark", "9910_h06_likes_A", "--status", "failed")
+        c = [c for c in self.store.read("captures") if c["capture_id"] == "9910_h06_likes_A"][0]
         self.assertEqual((c["captured_utc"], c["file_ref"]), ("", ""))
 
     def test_confirmatory_counts_on_time_6h_relevance_only(self):
