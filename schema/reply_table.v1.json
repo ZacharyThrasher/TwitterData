@@ -1,0 +1,412 @@
+{
+  "name": "reply_table",
+  "version": "1",
+  "columns": [
+    {
+      "name": "schema_version",
+      "type": "string",
+      "nullable": false,
+      "group": "capture",
+      "description": "Reply table schema version. Always \"1\" for this version."
+    },
+    {
+      "name": "platform",
+      "type": "string",
+      "nullable": false,
+      "group": "capture",
+      "description": "Platform the capture came from.",
+      "enum": [
+        "x",
+        "bluesky"
+      ]
+    },
+    {
+      "name": "capture_id",
+      "type": "string",
+      "nullable": false,
+      "group": "capture",
+      "description": "Id of the capture. Set with --capture-id (for example the sampling tracker id `{root_tweet_id}_h06_likes_A`); defaults to the input file name without extension."
+    },
+    {
+      "name": "capture_file",
+      "type": "string",
+      "nullable": false,
+      "group": "capture",
+      "description": "Input file base name (no directory)."
+    },
+    {
+      "name": "capture_session",
+      "type": "integer",
+      "nullable": false,
+      "group": "capture",
+      "description": "1-based load of one thread view inside the file. A new session starts each time the thread is loaded from the top (a request without a pagination cursor), per focal tweet and sort order."
+    },
+    {
+      "name": "capture_time_utc",
+      "type": "timestamp",
+      "nullable": false,
+      "group": "capture",
+      "description": "When the first response of this session was received (HAR startedDateTime), ISO 8601 UTC. For raw JSON input: --capture-time, else the file modification time."
+    },
+    {
+      "name": "page_index",
+      "type": "integer",
+      "nullable": false,
+      "group": "capture",
+      "description": "0-based index of the response (page) within the session that this row arrived in."
+    },
+    {
+      "name": "viewer_type",
+      "type": "string",
+      "nullable": false,
+      "group": "capture",
+      "description": "Account type of the person who captured the page. Set with --viewer-type; the parser never inspects cookies, so it cannot detect this itself.",
+      "enum": [
+        "logged_out",
+        "free",
+        "premium",
+        "premium_plus",
+        "unknown"
+      ]
+    },
+    {
+      "name": "viewer_label",
+      "type": "string",
+      "nullable": true,
+      "group": "capture",
+      "description": "Free-text label for the capturing persona (for example A or B). Set with --viewer-label."
+    },
+    {
+      "name": "sort_order",
+      "type": "string",
+      "nullable": false,
+      "group": "capture",
+      "description": "Reply sort the page was shown in. Read from the request's rankingMode (Relevance -> relevance, Recency -> recent, Likes -> likes) unless --sort-order is given.",
+      "enum": [
+        "relevance",
+        "recent",
+        "likes",
+        "unknown"
+      ]
+    },
+    {
+      "name": "sort_order_source",
+      "type": "string",
+      "nullable": false,
+      "group": "capture",
+      "description": "Where sort_order came from: request (rankingMode variable), flag (--sort-order), default (request sent no rankingMode, which X treats as relevance), or unknown (raw response input with no request and no flag).",
+      "enum": [
+        "request",
+        "flag",
+        "default",
+        "unknown"
+      ]
+    },
+    {
+      "name": "age_bucket",
+      "type": "string",
+      "nullable": true,
+      "group": "capture",
+      "description": "Thread age bucket at capture time (for example h01, h06, h24). Set with --age-bucket."
+    },
+    {
+      "name": "thread_id",
+      "type": "string",
+      "nullable": true,
+      "group": "thread",
+      "description": "Conversation root tweet id (conversation_id_str of the focal tweet)."
+    },
+    {
+      "name": "focal_tweet_id",
+      "type": "string",
+      "nullable": false,
+      "group": "thread",
+      "description": "Tweet whose reply list was captured (focalTweetId)."
+    },
+    {
+      "name": "focal_author_id_hash",
+      "type": "string",
+      "nullable": true,
+      "group": "thread",
+      "description": "HMAC hash of the focal tweet author's user id."
+    },
+    {
+      "name": "focal_author_followers",
+      "type": "integer",
+      "nullable": true,
+      "group": "thread",
+      "description": "Focal author follower count at capture."
+    },
+    {
+      "name": "focal_author_is_blue_verified",
+      "type": "boolean",
+      "nullable": true,
+      "group": "thread",
+      "description": "Focal author has a paid (blue) checkmark."
+    },
+    {
+      "name": "focal_author_verified_type",
+      "type": "string",
+      "nullable": true,
+      "group": "thread",
+      "description": "Focal author verified_type (Business, Government) when present."
+    },
+    {
+      "name": "focal_author_affiliate_label",
+      "type": "string",
+      "nullable": true,
+      "group": "thread",
+      "description": "Focal author affiliate badge text (the organisation name), when present."
+    },
+    {
+      "name": "focal_view_count",
+      "type": "integer",
+      "nullable": true,
+      "group": "thread",
+      "description": "Focal tweet view count at capture."
+    },
+    {
+      "name": "focal_like_count",
+      "type": "integer",
+      "nullable": true,
+      "group": "thread",
+      "description": "Focal tweet like count at capture."
+    },
+    {
+      "name": "focal_reply_count",
+      "type": "integer",
+      "nullable": true,
+      "group": "thread",
+      "description": "Focal tweet reply count at capture."
+    },
+    {
+      "name": "row_type",
+      "type": "string",
+      "nullable": false,
+      "group": "position",
+      "description": "reply: first item of a reply module (top-level reply). nested_reply: a later item in the same module. promoted: an ad injected into the reply list.",
+      "enum": [
+        "reply",
+        "nested_reply",
+        "promoted"
+      ]
+    },
+    {
+      "name": "is_promoted",
+      "type": "boolean",
+      "nullable": false,
+      "group": "position",
+      "description": "True when row_type is promoted."
+    },
+    {
+      "name": "display_rank",
+      "type": "integer",
+      "nullable": true,
+      "group": "position",
+      "description": "1-based order of top-level organic replies in the session, counting each reply once. Null for nested replies and promoted rows."
+    },
+    {
+      "name": "display_index",
+      "type": "integer",
+      "nullable": false,
+      "group": "position",
+      "description": "1-based order of every row in the session (replies, nested replies and ads)."
+    },
+    {
+      "name": "rank_is_absolute",
+      "type": "boolean",
+      "nullable": false,
+      "group": "position",
+      "description": "True when the session's first page (no cursor) was captured, so display_rank counts from the top of the thread. False when the capture began mid-thread."
+    },
+    {
+      "name": "module_position",
+      "type": "integer",
+      "nullable": false,
+      "group": "position",
+      "description": "0-based position inside the reply module. 0 for top-level replies and standalone ads."
+    },
+    {
+      "name": "conversation_section",
+      "type": "string",
+      "nullable": true,
+      "group": "position",
+      "description": "X's section label for the item, for example HighQuality, LowQuality or AbusiveQuality."
+    },
+    {
+      "name": "sort_index",
+      "type": "string",
+      "nullable": true,
+      "group": "position",
+      "description": "X timeline sortIndex of the entry (64-bit, kept as text)."
+    },
+    {
+      "name": "tweet_id",
+      "type": "string",
+      "nullable": false,
+      "group": "reply",
+      "description": "Reply tweet id."
+    },
+    {
+      "name": "in_reply_to_tweet_id",
+      "type": "string",
+      "nullable": true,
+      "group": "reply",
+      "description": "Parent tweet id."
+    },
+    {
+      "name": "created_at_utc",
+      "type": "timestamp",
+      "nullable": true,
+      "group": "reply",
+      "description": "Reply creation time, ISO 8601 UTC."
+    },
+    {
+      "name": "lang",
+      "type": "string",
+      "nullable": true,
+      "group": "reply",
+      "description": "X language code of the reply."
+    },
+    {
+      "name": "is_quote",
+      "type": "boolean",
+      "nullable": false,
+      "group": "reply",
+      "description": "Reply quotes another post."
+    },
+    {
+      "name": "has_media",
+      "type": "boolean",
+      "nullable": false,
+      "group": "reply",
+      "description": "Reply carries photos, video or GIFs."
+    },
+    {
+      "name": "view_count",
+      "type": "integer",
+      "nullable": true,
+      "group": "reply",
+      "description": "Views at capture. Null when X did not report views."
+    },
+    {
+      "name": "like_count",
+      "type": "integer",
+      "nullable": true,
+      "group": "reply",
+      "description": "Likes at capture."
+    },
+    {
+      "name": "reply_count",
+      "type": "integer",
+      "nullable": true,
+      "group": "reply",
+      "description": "Replies at capture."
+    },
+    {
+      "name": "repost_count",
+      "type": "integer",
+      "nullable": true,
+      "group": "reply",
+      "description": "Reposts (retweets) at capture."
+    },
+    {
+      "name": "quote_count",
+      "type": "integer",
+      "nullable": true,
+      "group": "reply",
+      "description": "Quotes at capture."
+    },
+    {
+      "name": "bookmark_count",
+      "type": "integer",
+      "nullable": true,
+      "group": "reply",
+      "description": "Bookmarks at capture."
+    },
+    {
+      "name": "text",
+      "type": "string",
+      "nullable": true,
+      "group": "reply",
+      "description": "Full reply text. Only filled when the parser runs with --include-text; null otherwise."
+    },
+    {
+      "name": "author_id_hash",
+      "type": "string",
+      "nullable": false,
+      "group": "author",
+      "description": "HMAC-SHA256 of the author's user id with the local salt (24 hex chars). Stable across captures made with the same salt."
+    },
+    {
+      "name": "author_handle_hash",
+      "type": "string",
+      "nullable": true,
+      "group": "author",
+      "description": "HMAC-SHA256 of the lower-cased handle with the local salt (24 hex chars)."
+    },
+    {
+      "name": "author_is_focal_author",
+      "type": "boolean",
+      "nullable": false,
+      "group": "author",
+      "description": "Reply was written by the focal tweet's author."
+    },
+    {
+      "name": "author_is_blue_verified",
+      "type": "boolean",
+      "nullable": true,
+      "group": "author",
+      "description": "Author has a paid (blue) checkmark (X Premium)."
+    },
+    {
+      "name": "author_verified_type",
+      "type": "string",
+      "nullable": true,
+      "group": "author",
+      "description": "Author verified_type (Business, Government) when present."
+    },
+    {
+      "name": "author_affiliate_label",
+      "type": "string",
+      "nullable": true,
+      "group": "author",
+      "description": "Author affiliate badge text, when present."
+    },
+    {
+      "name": "author_professional_type",
+      "type": "string",
+      "nullable": true,
+      "group": "author",
+      "description": "Professional account type (Creator, Business) when present."
+    },
+    {
+      "name": "author_followers",
+      "type": "integer",
+      "nullable": true,
+      "group": "author",
+      "description": "Author follower count at capture."
+    },
+    {
+      "name": "author_following",
+      "type": "integer",
+      "nullable": true,
+      "group": "author",
+      "description": "Accounts the author follows, at capture."
+    },
+    {
+      "name": "author_statuses",
+      "type": "integer",
+      "nullable": true,
+      "group": "author",
+      "description": "Author's total post count at capture."
+    },
+    {
+      "name": "author_created_at_utc",
+      "type": "timestamp",
+      "nullable": true,
+      "group": "author",
+      "description": "Author account creation time, ISO 8601 UTC."
+    }
+  ]
+}
