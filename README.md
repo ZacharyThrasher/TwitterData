@@ -5,6 +5,7 @@ Research code for the TwitterHate project: how X ranking and monetisation reward
 - `docs/preregistration.md`: hypotheses, predictions, analysis plan and stopping rules.
 - `sampling/`: thread sampling tracker (selection, capture schedule, status).
 - `src/twitterdata/capture/`: safe capture parser that turns X thread captures into the reply table ([schema](docs/reply_table_schema.md)).
+- `src/twitterdata/bluesky/`: Bluesky comparison collector, same reply table with `platform = bluesky` ([mapping](docs/bluesky_mapping.md)).
 
 Raw `.har` captures contain login tokens and must never be committed.
 
@@ -68,6 +69,25 @@ works; pass `--capture-time` and, if needed, `--focal-tweet-id`.
 python -m twitterdata schema --format json      # print the schema
 python -m twitterdata schema --write            # regenerate docs and JSON after editing src/twitterdata/schema.py
 ```
+
+## Bluesky comparison collector
+
+Collects Bluesky reply threads from the free public API (no login, no key)
+into the same reply table, so X and Bluesky can be analysed side by side.
+Bluesky has no paid tier and no ads, which makes it the control platform.
+
+```
+python -m twitterdata bluesky collect "https://bsky.app/profile/someone.bsky.social/post/3abc..." \
+    --sort relevance --sort recent --age-bucket h06 -o output/bsky.csv
+python -m twitterdata bluesky parse data/raw/bluesky/*.json -o output/bsky.csv   # rebuild offline
+```
+
+- Paced at 1 request per second, with retries and backoff.
+- Raw responses are saved as bundles in `data/raw/bluesky/` (git-ignored; they
+  hold real handles and text).
+- Bluesky-only fields (moderation labels, reply depth, index time) go to
+  `<output>.bluesky_extras.csv`.
+- Full mapping, ordering rules and gaps: [docs/bluesky_mapping.md](docs/bluesky_mapping.md).
 
 ### Tests
 

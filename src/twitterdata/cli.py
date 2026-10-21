@@ -8,6 +8,7 @@ import sys
 from datetime import datetime
 
 from twitterdata import schema
+from twitterdata.bluesky import cli as bluesky_cli
 from twitterdata.capture.parser import CaptureMeta, parse_capture
 from twitterdata.capture.safe_har import CaptureError
 from twitterdata.output import WRITERS
@@ -47,6 +48,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--include-text", action="store_true", help="Fill the text column (off by default).")
     p.add_argument("--salt-file", default=DEFAULT_SALT_FILE,
                    help=f"Hash salt file, created if missing. {SALT_ENV} overrides it. Default: %(default)s")
+
+    bluesky_cli.add_parser(sub)
 
     s = sub.add_parser("schema", help="Print or regenerate the reply table schema files.")
     s.add_argument("--format", choices=["json", "markdown"], default="json")
@@ -129,4 +132,6 @@ def _cmd_parse(args) -> int:
 
 def main(argv=None) -> int:
     args = _build_parser().parse_args(argv)
+    if args.command == "bluesky":
+        return bluesky_cli.run(args)
     return _cmd_schema(args) if args.command == "schema" else _cmd_parse(args)
