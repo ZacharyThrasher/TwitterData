@@ -11,6 +11,7 @@ hate_speech); the rest are left blank and the report treats them as missing.
 from __future__ import annotations
 
 import json
+import re
 import urllib.error
 import urllib.request
 from typing import Callable
@@ -33,6 +34,10 @@ def _http(base_url: str) -> Transport:
         try:
             with urllib.request.urlopen(req, timeout=600) as resp:
                 return json.loads(resp.read())
+        except urllib.error.HTTPError as e:  # server is up; this request failed
+            raise AICoderError(f"Ollama returned HTTP {e.code} for {path}") from e
+        except (TimeoutError, json.JSONDecodeError) as e:
+            raise AICoderError(f"Ollama request failed: {e}") from e
         except urllib.error.URLError as e:
             raise AICoderSetupError(f"cannot reach Ollama at {base_url} ({e}). Is `ollama serve` running?") from e
     return call
@@ -41,10 +46,11 @@ def _http(base_url: str) -> Transport:
 class OllamaCoder:
     def __init__(self, model: str = DEFAULT_OLLAMA_MODEL, *, url: str = DEFAULT_OLLAMA_URL, seed: int = 42,
                  expected_digest: str | None = None, transport: Transport | None = None):
-        self.model = model
+        self.model = model if ":" in model else model + ":latest"  # Ollama lists tags explicitly
         self.seed = seed
         self.expected_digest = expected_digest
-        self.name = "ai-ollama"
+        # One coder id per model, so switching models never mixes codes under one id
+        self.name = "ai-ollama-" + re.sub(r"[^A-Za-z0-9_.-]", "-", self.model)
         self._call = transport or _http(url)
         self._digest: str | None = None
 
@@ -142,6 +148,8 @@ class CardiffCoder:
                 out = out[0]
             scores = {d["label"].lower(): float(d["score"]) for d in out}
             positive = CARDIFF_MODELS[field][1]
+            if positive not in scores:
+                raise AICoderSetupError(f"{field} model returned labels {sorted(scores)}, expected {positive!r}")
             raw[field] = scores
             values[field] = str(int(scores.get(positive, 0.0) >= self.threshold))
         values = codebook.validate(values, partial=True)

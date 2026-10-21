@@ -104,3 +104,16 @@ def test_import_export_roundtrip(tmp_path, codebook):
     CoderStore(tmp_path / "s", "A").export_csv(out, codebook)
     rows = list(csv.DictReader(open(out)))
     assert rows[0]["slur"] == "1" and rows[0]["uid"] == "u1"
+
+
+def test_import_is_all_or_nothing(tmp_path, codebook):
+    src = tmp_path / "coded.csv"
+    with open(src, "w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=["uid"] + codebook.names)
+        w.writeheader()
+        w.writerow({"uid": "u1", **full_values()})
+        w.writerow({"uid": "u2", **full_values(threat="")})
+    with pytest.raises(ValueError, match="line 3.*Nothing was imported"):
+        import_csv(src, tmp_path / "s", "A", codebook)
+    assert not (tmp_path / "s" / "A.jsonl").exists()
+    assert import_csv(src, tmp_path / "s", "ai", codebook, kind="ai") == 2  # AI codes may be partial

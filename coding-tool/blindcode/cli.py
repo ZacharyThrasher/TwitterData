@@ -201,7 +201,7 @@ def main(argv: list[str] | None = None) -> int:
     h.add_argument("--per-test", type=int, help="cap cases per functional test (faster)")
     h.add_argument("--out")
     ai_args(h)
-    h.set_defaults(fn=cmd_hatecheck)
+    h.set_defaults(fn=cmd_hatecheck, store="work/hatecheck")  # kept apart from study codes
 
     pg = sub.add_parser("page", help="make a single offline HTML coding page for one coder")
     pg.add_argument("items")

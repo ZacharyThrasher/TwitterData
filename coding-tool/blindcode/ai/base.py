@@ -27,7 +27,7 @@ class AICoderSetupError(AICoderError):
     """The backend cannot run at all (server down, model missing, pin broken). Stops the run."""
 
 
-class PaidCallNotAllowed(RuntimeError):
+class PaidCallNotAllowed(AICoderSetupError):
     pass
 
 
@@ -73,7 +73,7 @@ def output_schema(codebook: Codebook) -> dict:
     return {"type": "object", "properties": props, "required": codebook.names, "additionalProperties": False}
 
 
-def parse_output(text: str, codebook: Codebook) -> dict[str, str]:
+def parse_output(text: str, codebook: Codebook, *, partial: bool = False) -> dict[str, str]:
     try:
         data = json.loads(text)
     except json.JSONDecodeError as e:
@@ -81,7 +81,7 @@ def parse_output(text: str, codebook: Codebook) -> dict[str, str]:
     if not isinstance(data, dict):
         raise AICoderError("output is not a JSON object")
     try:
-        return codebook.validate(data)
+        return codebook.validate(data, partial=partial)
     except CodebookError as e:
         raise AICoderError(f"output breaks the codebook: {e}") from e
 

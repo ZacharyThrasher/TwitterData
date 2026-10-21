@@ -204,6 +204,7 @@ $("download").onclick = download;
 document.addEventListener("keydown", e => {
   if (e.target.type === "text") { if (e.key === "Enter") { e.preventDefault(); save(); } return; }
   if (e.key === "Enter") { e.preventDefault(); save(); return; }
+  if (e.target.type === "radio" && e.key.startsWith("Arrow")) return;  // native radio-group keys
   if (e.key === "ArrowLeft") { idx = Math.max(0, idx - 1); render(); return; }
   if (e.key === "ArrowRight") { idx = Math.min(ITEMS.length - 1, idx + 1); render(); return; }
   const n = parseInt(e.key, 10);

@@ -107,3 +107,19 @@ def test_cli_default_backend_is_free_local(tmp_path, source_csv, capsys):
     main(["build-items", str(source_csv), str(items)])
     rc = main(["ai-code", str(items), "--store", str(tmp_path / "s"), "--ollama-url", "http://127.0.0.1:9"])
     assert rc == 2 and "ollama serve" in capsys.readouterr().err
+
+
+def test_paid_backend_without_env_is_a_clean_error(tmp_path, source_csv, capsys, monkeypatch):
+    monkeypatch.delenv("BLINDCODE_ALLOW_PAID", raising=False)
+    items = tmp_path / "items.csv"
+    main(["build-items", str(source_csv), str(items)])
+    rc = main(["ai-code", str(items), "--backend", "anthropic", "--allow-paid", "--store", str(tmp_path / "s")])
+    assert rc == 2 and "BLINDCODE_ALLOW_PAID" in capsys.readouterr().err
+
+
+def test_hatecheck_default_store_is_separate(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    cases = tmp_path / "hc.csv"
+    cases.write_text("functionality,case_id,test_case,label_gold\nx_h,1,I hate them.,hateful\n")
+    main(["hatecheck", str(cases), "--backend", "keyword"])
+    assert (tmp_path / "work" / "hatecheck").is_dir() and not (tmp_path / "work" / "coders").exists()

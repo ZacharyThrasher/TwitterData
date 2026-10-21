@@ -37,14 +37,14 @@ def test_ollama_request_is_deterministic_and_pinned(tmp_path, codebook):
     assert body["options"] == {"temperature": 0, "seed": 42}
     assert body["format"] == output_schema(codebook)
     assert [c[0] for c in fake.calls].count("/api/tags") == 1  # digest looked up once per run
-    rec = CoderStore(tmp_path, "ai-ollama").latest()["u1"]
+    rec = CoderStore(tmp_path, "ai-ollama-llama3.1-8b").latest()["u1"]
     assert rec["meta"]["model_digest"] == DIGEST and rec["values"]["target"] == "op"
 
 
 def test_ollama_missing_model_stops_the_run(tmp_path, codebook):
     with pytest.raises(AICoderSetupError, match="ollama pull"):
         run_ai_coder(OllamaCoder("qwen9:1b", transport=FakeOllama([])), ITEMS, codebook, tmp_path)
-    assert not (tmp_path / "ai-ollama.errors.log").exists()
+    assert not list(tmp_path.glob("*.errors.log"))
 
 
 def test_ollama_digest_pin(tmp_path, codebook):
@@ -97,3 +97,40 @@ def test_report_treats_uncovered_fields_as_missing(tmp_path, codebook):
     by = {s.name: s for s in summaries}
     assert by["incivility"].ai_verdicts["ai-detoxify"] == "PASS"
     assert by["stance"].ai_verdicts["ai-detoxify"] == "N/A"
+
+
+def test_ollama_names_coder_per_model_and_adds_latest_tag(tmp_path, codebook):
+    fake = FakeOllama([json.dumps(full_values())], models=("qwen2.5:latest",))
+    coder = OllamaCoder("qwen2.5", transport=fake)
+    assert coder.model == "qwen2.5:latest" and coder.name == "ai-ollama-qwen2.5-latest"
+    assert coder.code(ITEMS[0], codebook).meta["model_digest"] == DIGEST
+
+
+def test_ollama_http_error_fails_one_item_not_the_run(tmp_path, codebook, monkeypatch):
+    import io
+    import urllib.error
+    import urllib.request
+
+    from blindcode.ai.local import _http
+
+    def fake_urlopen(req, timeout):
+        if req.full_url.endswith("/api/tags"):
+            return io.BytesIO(json.dumps({"models": [{"name": "llama3.1:8b", "digest": DIGEST}]}).encode())
+        raise urllib.error.HTTPError(req.full_url, 500, "boom", {}, None)
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    stats = run_ai_coder(OllamaCoder(transport=_http("http://x")), ITEMS, codebook, tmp_path)
+    assert stats.failed == 2 and "HTTP 500" in next(tmp_path.glob("*.errors.log")).read_text()
+
+
+def test_cardiff_unexpected_labels_stop_the_run(codebook):
+    pipes = {"incivility": lambda t: [{"label": "LABEL_1", "score": 0.9}, {"label": "LABEL_0", "score": 0.1}]}
+    with pytest.raises(AICoderSetupError, match="label_1"):
+        CardiffCoder(pipelines=pipes).code(ITEMS[0], codebook)
+
+
+def test_replay_works_for_partial_backends(tmp_path, codebook):
+    from blindcode.ai import KeywordCoder, ReplayCoder
+    run_ai_coder(KeywordCoder(), ITEMS, codebook, tmp_path)
+    stats = run_ai_coder(ReplayCoder(tmp_path, "ai-keyword-baseline"), ITEMS, codebook, tmp_path, coder_id="r")
+    assert stats.coded == 2 and stats.failed == 0

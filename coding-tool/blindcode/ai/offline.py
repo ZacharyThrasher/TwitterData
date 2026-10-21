@@ -68,4 +68,4 @@ class ReplayCoder:
         if not rec or "raw" not in rec.get("meta", {}):
             raise AICoderError("no saved raw output for this uid")
         meta = {k: v for k, v in rec["meta"].items() if k not in ("raw", "backend", "prompt_sha256")}
-        return AIResult(parse_output(rec["meta"]["raw"], codebook), rec["meta"]["raw"], {**meta, "replayed": True})
+        return AIResult(parse_output(rec["meta"]["raw"], codebook, partial=True), rec["meta"]["raw"], {**meta, "replayed": True})

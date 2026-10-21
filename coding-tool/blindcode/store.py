@@ -12,7 +12,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .codebook import Codebook
+from .codebook import Codebook, CodebookError
 
 _CODER_ID = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 
@@ -89,8 +89,14 @@ def import_csv(path: str | Path, root: str | Path, coder: str, codebook: Codeboo
     shas = {r.get("codebook_sha256", "") for r in rows} - {""}
     if shas and shas != {codebook.sha256}:
         raise ValueError(f"{Path(path).name} was coded with a different codebook version than {codebook.id}")
-    for row in rows:
-        values = {k: row[k] for k in codebook.names if k in row}
-        store.save(row["uid"], values, codebook, kind=kind, meta={"imported_from": Path(path).name})
+    partial = kind == "ai"  # AI backends may leave fields they do not cover blank
+    checked = []
+    for i, row in enumerate(rows, 2):  # validate everything before writing anything
+        try:
+            checked.append((row["uid"], codebook.validate({k: row[k] for k in codebook.names if k in row}, partial=partial)))
+        except CodebookError as e:
+            raise ValueError(f"{Path(path).name} line {i}: {e}. Nothing was imported.") from e
+    for uid, values in checked:
+        store.save(uid, values, codebook, kind=kind, meta={"imported_from": Path(path).name}, partial=partial)
         n += 1
     return n
