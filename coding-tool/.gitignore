@@ -1,0 +1,4 @@
+*.egg-info/
+.pytest_cache/
+# Coding data stays out of git: reply text and codes are research data.
+work/

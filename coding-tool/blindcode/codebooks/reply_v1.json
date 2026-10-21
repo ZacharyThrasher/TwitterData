@@ -1,0 +1,66 @@
+{
+  "id": "reply_v1",
+  "title": "Reply coding codebook (v1)",
+  "instructions": "Code EACH reply independently from its text only. When unsure, choose the more conservative (lower-severity) code and note it.",
+  "contexts": {
+    "parent": "Replies to @AutisticClip, who posted a clip: \"Asmongold and Adin Ross offer QTCinderella $200,000 for charity to prove the Streamer Awards aren't rigged.\"",
+    "child": "Replies to @DirtbagLeft1234, who quote-tweeted that clip: \"Then why not just give $200,000 to charity without making it a weird stunt about your friend's award show?\" The handle signals a left-wing identity."
+  },
+  "fields": [
+    {
+      "name": "stance",
+      "type": "categorical",
+      "definition": "Stance toward the Asmongold/Adin $200k offer. pro_stunt: defends Asmongold/Adin or the offer, or attacks its critics. anti_stunt: criticises the offer/Asmongold/Adin, or agrees with the child OP. neutral: on topic, no side. off_topic. unclear.",
+      "options": ["pro_stunt", "anti_stunt", "neutral", "off_topic", "unclear"]
+    },
+    {
+      "name": "incivility",
+      "type": "binary",
+      "definition": "Insults, name-calling, profanity aimed at a person or group, contemptuous mockery. Plain disagreement or sarcasm without insult = 0."
+    },
+    {
+      "name": "attacks_op",
+      "type": "binary",
+      "definition": "Personal attack on the author being replied to (child: DirtbagLeft1234; parent: AutisticClip or QTCinderella counts as 0 here, code target separately)."
+    },
+    {
+      "name": "target",
+      "type": "categorical",
+      "definition": "Who the hostility (if any) is aimed at.",
+      "options": ["none", "op", "qtcinderella", "asmongold_or_adin", "the_left_or_political_group", "other_commenters", "other"]
+    },
+    {
+      "name": "slur",
+      "type": "binary",
+      "definition": "Uses a slur (racial, ethnic, religious, homophobic, transphobic, misogynist, or ableist such as \"retard/retarded\"), whether or not aimed at a protected group."
+    },
+    {
+      "name": "hate_speech",
+      "type": "binary",
+      "definition": "STRICT definition: attacks, dehumanises, or calls for harm against people BECAUSE OF a protected characteristic (race, ethnicity, national origin, religion, caste, sex, gender, gender identity, sexual orientation, disability, serious disease, age). Using \"retarded\" as a generic insult at someone who is not disabled: slur=1 and hate_speech=0 unless it demeans disabled people as a group. Misogynist attacks on QTCinderella because she is a woman (e.g. gendered slurs, \"women can't...\") = 1."
+    },
+    {
+      "name": "political_identity_attack",
+      "type": "binary",
+      "definition": "Attacks someone for political identity (commie, leftist, libtard, socialist, MAGA, fascist, etc.). Not a protected class; recorded separately."
+    },
+    {
+      "name": "threat",
+      "type": "binary",
+      "definition": "Threat of violence or wish of harm/death, including \"kys\"."
+    },
+    {
+      "name": "argument_tag",
+      "type": "categorical",
+      "definition": "Main argument of the reply.",
+      "key": false,
+      "options": ["already_donates", "op_should_donate", "whataboutism_op", "stunt_is_fine", "awards_rigged", "awards_not_rigged", "money_cant_buy", "clout_stunt", "attack_qtc", "defend_qtc", "joke_only", "insult_only", "other"]
+    },
+    {
+      "name": "note",
+      "type": "text",
+      "definition": "At most 15 words, only if useful (for example, ambiguity).",
+      "max_words": 15
+    }
+  ]
+}

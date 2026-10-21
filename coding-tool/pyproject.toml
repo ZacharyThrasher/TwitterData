@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "blindcode"
+version = "0.1.0"
+description = "Blind reply coding tool: human coders, pluggable AI third coder, Krippendorff's alpha"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+anthropic = ["anthropic"]
+dev = ["pytest", "krippendorff"]
+
+[project.scripts]
+blindcode = "blindcode.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["blindcode*"]
+
+[tool.setuptools.package-data]
+blindcode = ["codebooks/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

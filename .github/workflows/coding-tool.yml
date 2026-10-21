@@ -1,0 +1,21 @@
+name: coding-tool tests
+
+on:
+  push:
+    paths: ["coding-tool/**", ".github/workflows/coding-tool.yml"]
+  pull_request:
+    paths: ["coding-tool/**", ".github/workflows/coding-tool.yml"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: coding-tool
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .[dev]
+      - run: python -m pytest -q
