@@ -49,6 +49,19 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--salt-file", default=DEFAULT_SALT_FILE,
                    help=f"Hash salt file, created if missing. {SALT_ENV} overrides it. Default: %(default)s")
 
+    a = sub.add_parser("assist", help="Run the local capture helper: queue page and save endpoint for the extension.")
+    a.add_argument("--port", type=int, default=8765, help="Port on 127.0.0.1. Default: %(default)s")
+    a.add_argument("--sampling-dir", default=os.path.join(REPO_ROOT, "sampling"),
+                   help="Folder holding tracker.py and config.json. Default: %(default)s")
+    a.add_argument("--data", help="Tracker CSV folder. Default: <sampling-dir>/data")
+    a.add_argument("--out", default="captures", help="Where bundles and reply tables go (gitignored). Default: %(default)s")
+    a.add_argument("--viewer", default="A", help="Viewer label in capture ids. Default: %(default)s")
+    a.add_argument("--viewer-type", choices=schema.VIEWER_TYPES, default="free")
+    a.add_argument("--include-text", action="store_true", help="Fill the text column in reply tables.")
+    a.add_argument("--no-organic", action="store_true",
+                   help="Drop thread views that match no due capture instead of saving them to <out>/organic/.")
+    a.add_argument("--salt-file", default=DEFAULT_SALT_FILE)
+
     bluesky_cli.add_parser(sub)
 
     s = sub.add_parser("schema", help="Print or regenerate the reply table schema files.")
@@ -130,8 +143,25 @@ def _cmd_parse(args) -> int:
     return 0
 
 
+def _cmd_assist(args) -> int:
+    from twitterdata.capture.assist import AssistConfig, Assistant, serve
+
+    try:
+        salt = load_salt(args.salt_file)
+    except (OSError, ValueError) as e:
+        print(f"error: could not load the hash salt: {e}", file=sys.stderr)
+        return 2
+    cfg = AssistConfig(sampling_dir=args.sampling_dir, data_dir=args.data or os.path.join(args.sampling_dir, "data"),
+                       out_dir=args.out, salt=salt, viewer=args.viewer, viewer_type=args.viewer_type,
+                       include_text=args.include_text, organic=not args.no_organic)
+    serve(Assistant(cfg), args.port)
+    return 0
+
+
 def main(argv=None) -> int:
     args = _build_parser().parse_args(argv)
     if args.command == "bluesky":
         return bluesky_cli.run(args)
+    if args.command == "assist":
+        return _cmd_assist(args)
     return _cmd_schema(args) if args.command == "schema" else _cmd_parse(args)

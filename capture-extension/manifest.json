@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "TwitterData capture recorder",
+  "version": "0.1.0",
+  "description": "Keeps a copy of the X thread replies your browser already loaded and hands them to the local TwitterData helper. Never opens, scrolls or clicks anything.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": false
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://x.com/*",
+        "https://twitter.com/*"
+      ],
+      "js": [
+        "hook.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://x.com/*",
+        "https://twitter.com/*"
+      ],
+      "js": [
+        "sessions.js",
+        "relay.js"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "action": {
+    "default_title": "Capture recorder: ON. Click to pause."
+  }
+}
