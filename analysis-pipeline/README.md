@@ -73,6 +73,13 @@ weights); add it as a column in the codes file. Perspective API is not used.
 Main frame: Relevance sort, 6h captures, top-level organic replies, viewer A,
 one session per capture that starts at the top of the thread.
 
+Capture plan v1.1 (pre-registration amendment, 2026-10-21): each thread has 6h
+and 24h captures under Relevance and Likes, no 1h and no Recent. The 6h Likes
+capture is the T1 falsifier; T1, T2, T3 and T10 are refit on the 24h captures
+and reported as `robustness_h24`. A Recent contrast is added only if Recent
+captures happen to exist. A2 uses each thread's first Relevance capture (6h)
+as the moment a rude Premium reply "reached the top".
+
 | Test | Model | Pass rule |
 | --- | --- | --- |
 | **T1** Premium placed first | Mixed model of rank height (0 to 100) on Premium plus likes, followers, reply age, OP replied, text length; random intercept per thread. Sensitivity: rank-ordered logit. Plus the Premium amplification ratio and the Likes sort contrast. | Coefficient CI above 0, AND ratio above 1.5 with CI above 1, AND the Likes contrast holds |
