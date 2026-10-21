@@ -114,7 +114,7 @@
       "type": "string",
       "nullable": true,
       "group": "thread",
-      "description": "Conversation root tweet id (conversation_id_str of the focal tweet)."
+      "description": "Conversation root tweet id: conversation_id_str of the focal tweet, or of the replies when the capture began mid-thread and the focal tweet was not captured."
     },
     {
       "name": "focal_tweet_id",

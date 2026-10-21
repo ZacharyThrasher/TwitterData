@@ -38,6 +38,7 @@ class _Session:
     started: datetime | None
     rank_is_absolute: bool
     focal: dict | None = None
+    conversation_id: str | None = None  # from the replies, for captures without the focal tweet
     page_index: int = -1
     display_index: int = 0
     display_rank: int = 0
@@ -157,6 +158,8 @@ def build_rows(responses: list[CaptureResponse], meta: CaptureMeta, salt: bytes,
                 stats["duplicates"] += 1
                 continue
             session.seen.add(t["id"])
+            if item.row_type != "promoted" and session.conversation_id is None:
+                session.conversation_id = t["conversation_id"]
             _place_in_module(session, item)
             session.display_index += 1
             rank = None
@@ -219,6 +222,8 @@ def build_rows(responses: list[CaptureResponse], meta: CaptureMeta, salt: bytes,
     for row in rows:
         session = row.pop("_session")
         row.update(_focal_columns(salt, session.focal))
+        if row["thread_id"] is None:
+            row["thread_id"] = session.conversation_id
         row["author_is_focal_author"] = (row["focal_author_id_hash"] is not None
                                          and row["author_id_hash"] == row["focal_author_id_hash"])
         finished.append({name: row.get(name) for name in COLUMN_NAMES})
