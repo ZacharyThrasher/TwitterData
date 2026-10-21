@@ -36,11 +36,12 @@ def parse(page: str, url: str = "", observed_at: str = "") -> list:
     if re.search(r"/campaigns/[^/?#]+", url or ""):
         detail = parse_detail(page, url)
         return [detail] if detail else []
-    campaigns = parse_board(page)
-    if not campaigns and _looks_like_detail(page):
+    if not url and _looks_like_detail(page):
+        # The board has no "Payout" heading; a detail page does. Check this
+        # first so "more campaigns" cards on a detail page are not taken for a board.
         detail = parse_detail(page, url)
         return [detail] if detail else []
-    return campaigns
+    return parse_board(page)
 
 
 def parse_board(page: str) -> list:
@@ -75,7 +76,9 @@ def _from_json(item: dict):
         p = normalize_platform(name)
         if p and isinstance(spec, dict) and spec.get("payRate") is not None:
             platform_rates[p] = float(spec["payRate"])
-    rate = payout.get("payRate", item.get("headlineRate"))
+    rate = payout.get("payRate")
+    if rate is None:
+        rate = item.get("headlineRate")
     hashtags = []
     for tag in (text_reqs.get("ftcDisclosureHashtags") or []) + (text_reqs.get("hashtags") or []):
         if tag and tag not in hashtags:

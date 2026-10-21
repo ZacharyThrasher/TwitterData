@@ -30,7 +30,7 @@ Only `paid_confirmed` says money changed hands. `paid_likely` describes behaviou
 - `bio_not_impersonating`: bio says "not impersonating" (clip accounts post other people's faces and add this to avoid impersonation reports).
 - `bio_fan_or_parody`: bio says fan account, parody or not affiliated.
 - `bio_dm_for_promo`: bio offers "DM for ads / promo / submissions / removal".
-- `handle_or_name_clip`: handle or display name contains "clip", ends a word in "mp4", or says "highlights". Known false friends are removed first: eclipse, clipboard, paperclip, LA Clippers.
+- `handle_or_name_clip`: handle or display name contains "clip", ends a word in "mp4", or says "highlights". Known false friends (eclipse, clipboard, paperclip, LA Clippers) are removed from the handle, name and bio before any pattern runs.
 
 **Supporting (only lift a medium signal)**
 

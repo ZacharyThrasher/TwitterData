@@ -41,12 +41,14 @@ def _saved_from_url(page: str) -> str:
 
 def snapshot_page(store: Store, source_key: str, raw: bytes, observed_at: str, method: str, url: str = "", original_file: str = "", note: str = ""):
     """Parse one page and store it. Returns (stored: bool, campaigns)."""
+    digest = sha256_bytes(raw)
+    if digest in store.known_hashes(source_key):
+        return False, []
     page = raw.decode("utf-8", "replace")
     url = url or _saved_from_url(page)
     campaigns = PARSERS[source_key](page, url=url, observed_at=observed_at)
     for c in campaigns:
         topics.apply(c)
-    digest = sha256_bytes(raw)
     meta = SnapshotMeta(
         snapshot_id=make_snapshot_id(source_key, observed_at, digest),
         source=source_key,
@@ -76,18 +78,27 @@ def cmd_ingest(args) -> int:
     if not source or not source.collectable:
         print(f"Unknown or non-collectable source: {args.source}", file=sys.stderr)
         return 2
+    observed_arg = None
+    if args.observed_at:
+        try:
+            observed_arg = _utc_iso(_parse_iso(args.observed_at).timestamp())
+        except ValueError:
+            print(f"--observed-at must be ISO 8601, e.g. 2026-10-28T15:00:00Z (got {args.observed_at!r})", file=sys.stderr)
+            return 2
     total = 0
     for path in _expand(args.files):
         raw = path.read_bytes()
-        observed = args.observed_at or _utc_iso(path.stat().st_mtime)
+        observed = observed_arg or _utc_iso(path.stat().st_mtime)
         stored, campaigns = snapshot_page(
             store, source.key, raw, observed, "manual_save", url=args.url or "", original_file=path.name, note=args.note or ""
         )
-        status = "stored" if stored else "already stored, skipped"
-        print(f"{path.name}: {len(campaigns)} campaigns, {status}")
+        if not stored:
+            print(f"{path.name}: already stored, skipped")
+            continue
+        print(f"{path.name}: {len(campaigns)} campaigns, stored")
         if not campaigns:
             print("  warning: no campaigns found; check the page kind or save it again", file=sys.stderr)
-        total += len(campaigns) if stored else 0
+        total += len(campaigns)
     print(f"{total} campaign rows added to {store.csv_path}")
     return 0
 
@@ -128,33 +139,54 @@ def current_view(rows: list, window_days: float = 7.0) -> dict:
     of that source's newest snapshot. Returns {source: (newest_time, rows)}."""
     newest = {}
     for r in rows:
-        if r["source"] not in newest or r["observed_at"] > newest[r["source"]]:
+        if r["source"] not in newest or _ts(r) > _ts({"observed_at": newest[r["source"]]}):
             newest[r["source"]] = r["observed_at"]
     out = {}
     for source, when in newest.items():
         cutoff = _parse_iso(when).timestamp() - window_days * 86400
         latest = {}
         for r in rows:
-            if r["source"] != source or _parse_iso(r["observed_at"]).timestamp() < cutoff:
+            if r["source"] != source or _ts(r) < cutoff:
                 continue
             latest.setdefault(r["campaign_id"], []).append(r)
         out[source] = (when, [_merge_latest(rs) for rs in latest.values()])
     return out
 
 
+# Fields that only make sense together, with a test for "this row actually knows them".
+_FIELD_GROUPS = [
+    (("platforms", "platforms_known", "targets_x"), lambda r: r.get("platforms_known") == "true"),
+    (("topic", "topics", "topic_keywords"), lambda r: r.get("topic") not in ("", "other")),
+    (("rate_per_1k_usd", "rate_is_max", "platform_rates_per_1k"), lambda r: bool(r.get("rate_per_1k_usd"))),
+]
+_GROUPED = {f for fields, _ in _FIELD_GROUPS for f in fields}
+
+
 def _merge_latest(rows: list) -> dict:
-    """Newest row for a campaign, with blanks filled from older rows.
+    """Newest row for a campaign, with gaps filled from older rows.
 
     A detail-page save carries fewer fields than the board, so a newer detail
-    row should not erase budget or hashtags seen on the board a moment earlier.
+    row should not erase budget, hashtags, platforms or topic seen on the board
+    a moment earlier. Linked fields (platforms and targets_x, topic and its
+    keywords, rate and its flags) are taken together from the newest row that
+    actually has them.
     """
-    ordered = sorted(rows, key=lambda r: r["observed_at"], reverse=True)
+    ordered = sorted(rows, key=_ts, reverse=True)
     merged = dict(ordered[0])
     for older in ordered[1:]:
         for k, v in older.items():
-            if not merged.get(k) and v:
+            if k not in _GROUPED and not merged.get(k) and v:
                 merged[k] = v
+    for fields, has in _FIELD_GROUPS:
+        source = next((r for r in ordered if has(r)), None)
+        if source is not None:
+            for f in fields:
+                merged[f] = source.get(f, "")
     return merged
+
+
+def _ts(row: dict) -> float:
+    return _parse_iso(row["observed_at"]).timestamp()
 
 
 def _parse_iso(s: str) -> datetime:

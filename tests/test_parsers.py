@@ -102,3 +102,26 @@ def test_clipping_net_cards():
 def test_clipping_net_end_date_blank_without_observation_time():
     cs = clipping_net.parse(fixture_text("clipping_net_home.html"))
     assert cs[0].end_date == ""
+
+
+def test_vyro_null_pay_rate_falls_back_to_headline():
+    import json
+    item = {"id": "1", "slug": "a-Aa11Bb22", "name": "n", "payoutModel": {"model": "CPM", "payRate": None}, "headlineRate": 2.5}
+    payload = '0:{"initialPage":' + json.dumps({"data": [item]}) + "}"
+    page = "<script>self.__next_f.push([1,%s])</script>" % json.dumps(payload)
+    [c] = vyro.parse(page)
+    assert c.rate_per_1k_usd == 2.5
+
+
+def test_vyro_detail_with_related_cards_and_no_url_is_a_detail():
+    page = fixture_text("vyro_detail.html").replace(
+        "</body>", '<a href="/campaigns/other-Xx11Yy22"><h3>Other</h3><p>Other</p><span>$1,000</span><span>Per 1M Views</span></a></body>'
+    )
+    [c] = vyro.parse(page)
+    assert c.campaign_id == "vyro:Mm55Nn44"
+
+
+def test_clipping_net_singular_day_left():
+    page = fixture_text("clipping_net_home.html").replace("40<!-- --> days left", "1<!-- --> day left", 1)
+    cs = clipping_net.parse(page, observed_at="2026-10-21T12:00:00Z")
+    assert cs[0].end_date == "2026-10-22"

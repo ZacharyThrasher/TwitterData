@@ -58,9 +58,15 @@ class Store:
         self.raw_dir = self.root / "raw"
         self.log_path = self.root / "snapshots.jsonl"
         self.csv_path = self.root / "campaign_snapshots.csv"
+        self._hashes = None
 
     def known_hashes(self, source: str) -> set:
-        return {m["sha256"] for m in self.snapshots() if m["source"] == source}
+        # Read the log once per Store; save() keeps the cache current.
+        if self._hashes is None:
+            self._hashes = {}
+            for m in self.snapshots():
+                self._hashes.setdefault(m["source"], set()).add(m["sha256"])
+        return self._hashes.setdefault(source, set())
 
     def snapshots(self) -> list:
         if not self.log_path.exists():
@@ -74,7 +80,12 @@ class Store:
         return out
 
     def save(self, meta: SnapshotMeta, raw: bytes, campaigns: list) -> bool:
-        """Write a snapshot. Returns False (and writes nothing) if already stored."""
+        """Write a snapshot. Returns False (and writes nothing) if already stored.
+
+        The log line is written last and is what marks a snapshot as stored.
+        If an earlier run died between the CSV and the log, its rows for this
+        snapshot are removed before writing them again, so they never double.
+        """
         if meta.sha256 in self.known_hashes(meta.source):
             return False
         self.root.mkdir(parents=True, exist_ok=True)
@@ -82,6 +93,7 @@ class Store:
         raw_path.parent.mkdir(parents=True, exist_ok=True)
         raw_path.write_bytes(raw)
 
+        self._drop_rows(meta.snapshot_id)
         new_file = not self.csv_path.exists()
         with self.csv_path.open("a", newline="", encoding="utf-8") as fh:
             writer = csv.DictWriter(fh, fieldnames=CSV_COLUMNS)
@@ -92,7 +104,18 @@ class Store:
 
         with self.log_path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(meta.__dict__, sort_keys=True) + "\n")
+        self.known_hashes(meta.source).add(meta.sha256)
         return True
+
+    def _drop_rows(self, snapshot_id: str) -> None:
+        rows = self.rows()
+        keep = [r for r in rows if r["snapshot_id"] != snapshot_id]
+        if len(keep) == len(rows):
+            return
+        with self.csv_path.open("w", newline="", encoding="utf-8") as fh:
+            writer = csv.DictWriter(fh, fieldnames=CSV_COLUMNS)
+            writer.writeheader()
+            writer.writerows(keep)
 
     def rows(self) -> list:
         if not self.csv_path.exists():

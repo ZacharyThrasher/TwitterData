@@ -87,3 +87,9 @@ def test_false_friends_do_not_match():
 def test_campaign_hashtags_from_snapshot_rows_drop_generic():
     rows = [{"required_hashtags": "#paidpartnership;#TotalDramaRoblox"}, {"required_hashtags": "#ad"}, {}]
     assert rule.campaign_hashtags(rows) == {"#totaldramaroblox"}
+
+
+def test_clippers_fan_bio_is_not_a_clip_signal():
+    t = rule.tag_account(acct(description="LA Clippers fan account"))
+    assert "bio_clips" not in t.signals
+    assert t.tier in {"none", "clip_possible"}

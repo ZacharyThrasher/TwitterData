@@ -51,10 +51,9 @@ def _card(card: str, observed_at: str):
             break
 
     end_date = ""
-    for i, tok in enumerate(tokens):
-        if tok.isdigit() and i + 1 < len(tokens) and tokens[i + 1].lower().startswith("days left"):
-            end_date = _days_left_to_date(int(tok), observed_at)
-            break
+    m = re.search(r"(\d+)\s*days?\s+left", " ".join(tokens), re.I)
+    if m:
+        end_date = _days_left_to_date(int(m.group(1)), observed_at)
 
     rate_label = next((t for t in tokens if "per 100k" in t.lower() or "per 1" in t.lower()), "per 100k")
     rate_block = card

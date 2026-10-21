@@ -15,11 +15,13 @@ import re
 TOPIC_KEYWORDS = {
     "politics": [
         "election", "senate", "senator", "congress", "congressman", "congresswoman",
-        "governor", "mayor", "candidate", "campaign trail", "vote", "voter", "voters",
-        "ballot", "primary", "democrat", "democrats", "republican", "republicans",
+        "governor", "mayor", "candidate", "campaign trail", "voter", "voters",
+        "ballot", "democrat", "democrats", "republican", "republicans",
         "gop", "maga", "trump", "biden", "harris", "vance", "newsom", "desantis",
-        "politics", "political", "pac", "super pac", "policy", "immigration",
-        "border", "abortion", "tariff", "tariffs",
+        "politics", "political", "super pac", "political action committee",
+        "immigration", "abortion", "tariffs",
+        # Deliberately left out because brands and contests use them: vote, primary,
+        # policy, border, pac. Add a campaign by hand if one of those is political.
     ],
     "gambling": [
         "stake", "casino", "bet", "bets", "betting", "sportsbook", "gamble",

@@ -96,3 +96,52 @@ def test_ingest_expands_wildcards_itself(tmp_path):
     data = tmp_path / "data"
     assert cli.main(["ingest", str(inbox / "vyro_*.html"), "--source", "vyro", "--data", str(data)]) == 0
     assert len(Store(data).snapshots()) == 2
+
+
+def test_merge_keeps_board_topic_and_platforms_over_thinner_detail_row():
+    board = {"snapshot_id": "1", "observed_at": "2026-10-21T00:00:00Z", "campaign_id": "c", "source": "vyro",
+             "topic": "politics", "topics": "politics", "topic_keywords": "senate",
+             "platforms": "x", "platforms_known": "true", "targets_x": "true",
+             "rate_per_1k_usd": "2", "rate_is_max": "false", "platform_rates_per_1k": "", "budget_total_usd": "100"}
+    detail = dict(board, snapshot_id="2", observed_at="2026-10-22T00:00:00Z", topic="other", topics="other",
+                  topic_keywords="", platforms="", platforms_known="false", targets_x="", budget_total_usd="",
+                  rate_per_1k_usd="2.5")
+    m = cli._merge_latest([board, detail])
+    assert m["topic"] == "politics" and m["platforms_known"] == "true" and m["targets_x"] == "true"
+    assert m["budget_total_usd"] == "100"
+    assert m["rate_per_1k_usd"] == "2.5"  # newer value wins when present
+    assert m["snapshot_id"] == "2"
+
+
+def test_newest_is_chosen_by_time_not_string(tmp_path):
+    rows = [
+        {"source": "s", "campaign_id": "a", "observed_at": "2026-10-21T23:00:00-05:00"},  # 04:00Z on the 22nd
+        {"source": "s", "campaign_id": "b", "observed_at": "2026-10-22T01:00:00Z"},
+    ]
+    when, _ = cli.current_view(rows)["s"]
+    assert when == "2026-10-21T23:00:00-05:00"
+
+
+def test_observed_at_is_validated_and_normalized(tmp_path, capsys):
+    data = tmp_path / "data"
+    bad = ["ingest", str(FIXTURES / "vyro_board.html"), "--source", "vyro", "--observed-at", "21/10/2026", "--data", str(data)]
+    assert cli.main(bad) == 2
+    assert "ISO 8601" in capsys.readouterr().err
+    ok = ["ingest", str(FIXTURES / "vyro_board.html"), "--source", "vyro",
+          "--observed-at", "2026-10-21T13:00:00-04:00", "--data", str(data)]
+    assert cli.main(ok) == 0
+    assert Store(data).snapshots()[0]["observed_at"] == "2026-10-21T17:00:00Z"
+
+
+def test_rows_left_by_an_interrupted_run_are_not_doubled(tmp_path):
+    from clip_monitor.store import SnapshotMeta
+    from clip_monitor.models import Campaign
+    store = Store(tmp_path)
+    meta = SnapshotMeta("s_1", "vyro", "2026-10-21T00:00:00Z", "manual_save", "", "abc", 1)
+    c = Campaign(source="vyro", campaign_id="x", name="n")
+    # Simulate a crash after the CSV write: rows present, no log line.
+    store.save(meta, b"page", [c])
+    store.log_path.unlink()
+    fresh = Store(tmp_path)
+    assert fresh.save(meta, b"page", [c]) is True
+    assert len(fresh.rows()) == 1

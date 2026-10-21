@@ -50,7 +50,7 @@ _BIO_PATTERNS = [
 ]
 _HANDLE_PATTERN = re.compile(r"(clip|mp4\b|highlights)", re.I)
 # Words that contain "clip" but have nothing to do with clipping.
-_HANDLE_FALSE_FRIENDS = re.compile(r"(eclips\w*|clipboard|paperclip|clippers?\s*(nation|fan|fans|basketball)|la\s*clippers)", re.I)
+_FALSE_FRIENDS = re.compile(r"(eclips\w*|clipboard|paperclip|clippers?\s*(nation|fan|fans|basketball)|la\s*clippers)", re.I)
 
 
 @dataclass
@@ -102,13 +102,13 @@ def tag_account(account: dict, known_campaign_tags=frozenset()) -> Tag:
     if post_tags & GENERIC_DISCLOSURE_TAGS:
         support.append("generic_disclosure_hashtag")
 
-    bio = account.get("description") or ""
+    bio = _FALSE_FRIENDS.sub(" ", account.get("description") or "")
     for name, pat in _BIO_PATTERNS:
         if pat.search(bio):
             medium.append(name)
 
     handle = f"{account.get('screen_name') or ''} {account.get('name') or ''}"
-    handle = _HANDLE_FALSE_FRIENDS.sub(" ", handle)
+    handle = _FALSE_FRIENDS.sub(" ", handle)
     if _HANDLE_PATTERN.search(handle):
         medium.append("handle_or_name_clip")
 
