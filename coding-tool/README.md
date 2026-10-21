@@ -79,8 +79,9 @@ protected-characteristic test.
 
 **Setting up the free LLM (one time):** install Ollama from https://ollama.com, then
 `ollama pull llama3.1:8b` (about 5 GB; a bigger model such as `--ollama-model qwen2.5:14b` is
-better if the machine has 16 GB+ RAM). `ai-code` talks to it on `localhost:11434`. Record the
-digest it prints in the store (`meta.model_digest`) and pass `--digest` on later runs to pin it.
+better if the machine has 16 GB+ RAM). `ai-code` talks to it on `localhost:11434` and stores codes as coder `ai-ollama-<model>`, so
+each model gets its own coder id. The model digest is saved on every code (`meta.model_digest`);
+pass `--digest` on later runs to refuse a model that has changed.
 
 **Validate before trusting:** `python -m blindcode hatecheck hatecheck_test_suite_cases.csv --backend ollama`
 scores the hate_speech field on HateCheck's 3,728 test cases and lists the functional tests it fails.
