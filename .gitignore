@@ -3,3 +3,21 @@
 __pycache__/
 *.pyc
 sampling/data/*.tmp
+
+# Raw browser captures hold live session tokens. Never commit them.
+captures/
+data/raw/
+
+# Parser outputs are personal data (pseudonymous, not anonymous).
+output/
+*.reply_table.csv
+*.reply_table.jsonl
+
+# Local hash salt
+hash_salt
+
+*.egg-info/
+.pytest_cache/
+.venv/
+build/
+dist/
