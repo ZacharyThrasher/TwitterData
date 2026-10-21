@@ -23,6 +23,10 @@ class AICoderError(RuntimeError):
     """The backend could not produce a valid code for this item."""
 
 
+class AICoderSetupError(AICoderError):
+    """The backend cannot run at all (server down, model missing, pin broken). Stops the run."""
+
+
 class PaidCallNotAllowed(RuntimeError):
     pass
 
@@ -108,6 +112,8 @@ def run_ai_coder(coder: AICoder, items: list[Item], codebook: Codebook, store_ro
             break
         try:
             res = coder.code(item, codebook)
+        except AICoderSetupError:
+            raise
         except AICoderError as e:
             stats.failed += 1
             err_path.parent.mkdir(parents=True, exist_ok=True)
@@ -115,6 +121,6 @@ def run_ai_coder(coder: AICoder, items: list[Item], codebook: Codebook, store_ro
                 fh.write(json.dumps({"uid": item.uid, "error": str(e)}) + "\n")
             continue
         meta = {"backend": coder.name, "prompt_sha256": prompt_sha256(codebook), "raw": res.raw, **res.meta}
-        store.save(item.uid, res.values, codebook, kind="ai", meta=meta)
+        store.save(item.uid, res.values, codebook, kind="ai", meta=meta, partial=True)
         stats.coded += 1
     return stats

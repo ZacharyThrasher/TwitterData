@@ -41,12 +41,14 @@ class CoderStore:
             out[rec["uid"]] = rec
         return out
 
-    def save(self, uid: str, values: dict, codebook: Codebook, *, kind: str = "human", meta: dict | None = None) -> dict:
+    def save(self, uid: str, values: dict, codebook: Codebook, *, kind: str = "human", meta: dict | None = None,
+             partial: bool = False) -> dict:
+        """Append one code. partial=True allows blank coded fields (AI backends that cover only some fields)."""
         rec = {
             "uid": uid,
             "coder": self.coder,
             "kind": kind,
-            "values": codebook.validate(values),
+            "values": codebook.validate(values, partial=partial),
             "codebook_id": codebook.id,
             "codebook_sha256": codebook.sha256,
             "coded_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -83,8 +85,12 @@ def import_csv(path: str | Path, root: str | Path, coder: str, codebook: Codeboo
     store = CoderStore(root, coder)
     n = 0
     with open(path, newline="", encoding="utf-8") as fh:
-        for row in csv.DictReader(fh):
-            values = {k: row[k] for k in codebook.names if k in row}
-            store.save(row["uid"], values, codebook, kind=kind, meta={"imported_from": Path(path).name})
-            n += 1
+        rows = list(csv.DictReader(fh))
+    shas = {r.get("codebook_sha256", "") for r in rows} - {""}
+    if shas and shas != {codebook.sha256}:
+        raise ValueError(f"{Path(path).name} was coded with a different codebook version than {codebook.id}")
+    for row in rows:
+        values = {k: row[k] for k in codebook.names if k in row}
+        store.save(row["uid"], values, codebook, kind=kind, meta={"imported_from": Path(path).name})
+        n += 1
     return n

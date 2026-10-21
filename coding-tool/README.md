@@ -5,10 +5,12 @@ TwitterHate results can be checked by more than one coder.
 
 - **Blind.** Coders see the thread context and the reply text. Never the handle, blue check, views, likes or rank.
 - **Per coder.** Each coder's codes live in their own append-only file.
-- **AI third coder.** Pluggable. Offline backends by default; the paid Claude backend is off unless explicitly allowed.
+- **AI third coder.** Pluggable. Defaults to free coders that run on your own machine. The paid Claude backend is off unless explicitly allowed.
+- **Volunteer friendly.** One offline HTML page per coder; they send back a CSV. Nothing to install.
 - **Agreement report.** Krippendorff's alpha with a 95% bootstrap interval, pass/fail rules, F1, and a bias check.
 
-Implements methods section 6.6 and 6.7 of `research/data-and-methods.md`.
+Implements methods sections 6.6 and 6.7 of `research/data-and-methods.md`. For who codes and
+how, see [docs/second-coder-protocol.md](docs/second-coder-protocol.md).
 
 ## Quick start
 
@@ -20,14 +22,17 @@ pip install -e .[dev]            # optional: gives the `blindcode` command and t
 # 1. Make the blind items file (keeps only uid, text, context)
 python -m blindcode build-items analysis_merged.csv work/items.csv
 
-# 2. Each human codes on their own
-python -m blindcode code work/items.csv --coder zach
-python -m blindcode code work/items.csv --coder coder2
+# 2. Draw a sample that oversamples rare classes (see the protocol doc)
+python -m blindcode sample work/items.csv work/gold.csv --n 300
 
-# 3. AI third coder (free offline baseline shown; see "AI coder" below)
-python -m blindcode ai-code work/items.csv --backend keyword
+# 3. Human coders: an offline page each (or `code` for a terminal session)
+python -m blindcode page work/gold.csv --coder volunteer --out work/volunteer.html
+python -m blindcode import codes_volunteer.csv --coder volunteer
 
-# 4. Report
+# 4. Free AI coder (local open-weights LLM; see "AI coder" below)
+python -m blindcode ai-code work/gold.csv
+
+# 5. Report
 python -m blindcode report --out work/report.md
 ```
 
@@ -45,22 +50,44 @@ Existing codes (for example `coded_A.csv`) can be loaded with
 
 `work/` is git-ignored: reply text and codes are research data, not code.
 
-## Coding session keys
+## Coding by hand
 
-Type the option number or the value. `?` shows the field's definition, `b` goes back one field,
+**Offline page (`page`):** one self-contained HTML file per coder, in that coder's own shuffled
+order. Works offline in any browser, on a phone too. Keys: `1` yes / `0` no on yes-no questions,
+`1`-`9` on lists, Enter saves and moves on. Progress is kept in the browser, but the downloaded
+CSV is the record; it carries the codebook hash, and `import` refuses a CSV made with another
+codebook version.
+
+**Terminal session (`code`):** type the option number or the value. `?` shows the field's definition, `b` goes back one field,
 `s` skips the item, `q` saves and quits. After the last field, Enter saves and `r` redoes the item.
 Sessions resume where they stopped.
 
 ## AI coder
 
-| Backend | Cost | Use |
-|---|---|---|
-| `keyword` | free | Crude deterministic baseline so the pipeline runs offline. **Not** a valid research coder. |
-| `replay` | free | Re-parses raw outputs saved by an earlier AI run (`--replay-from <coder>`). |
-| `anthropic` | paid | Claude, pinned model (default `claude-opus-5-5`), fixed effort, JSON-schema-constrained output. |
+| Backend | Cost | Covers | Use |
+|---|---|---|---|
+| `ollama` (default) | free, local | every field | Open-weights LLM applies the full codebook. Temperature 0, fixed seed, model digest recorded and checkable with `--digest`. |
+| `detoxify` | free, local | incivility, threat, hate proxy | Fast classifier stack. `pip install detoxify`. |
+| `cardiff` | free, local | incivility, hate proxy | cardiffnlp Twitter RoBERTa models. `pip install transformers torch`. |
+| `keyword` | free | most fields, crudely | Test baseline only. **Not** a valid research coder. |
+| `replay` | free | as saved | Re-parses raw outputs saved by an earlier AI run (`--replay-from <coder>`). |
+| `anthropic` | **paid** | every field | Claude, pinned model. Off by default; see below. |
 
-The paid backend needs **both** `--allow-paid` and the environment variable `BLINDCODE_ALLOW_PAID=1`.
-Without them it prints a cost estimate and stops. Install the SDK with `pip install -e .[anthropic]`.
+Fields a backend does not cover are left blank and count as missing in the report (shown N/A).
+The classifiers' "hate" score is only a proxy: it does not apply the codebook's strict
+protected-characteristic test.
+
+**Setting up the free LLM (one time):** install Ollama from https://ollama.com, then
+`ollama pull llama3.1:8b` (about 5 GB; a bigger model such as `--ollama-model qwen2.5:14b` is
+better if the machine has 16 GB+ RAM). `ai-code` talks to it on `localhost:11434`. Record the
+digest it prints in the store (`meta.model_digest`) and pass `--digest` on later runs to pin it.
+
+**Validate before trusting:** `python -m blindcode hatecheck hatecheck_test_suite_cases.csv --backend ollama`
+scores the hate_speech field on HateCheck's 3,728 test cases and lists the functional tests it fails.
+
+**The paid Claude backend** needs **both** `--allow-paid` and the environment variable
+`BLINDCODE_ALLOW_PAID=1`. Without them it prints a cost estimate and stops. Install the SDK with
+`pip install -e .[anthropic]`.
 
 What gets saved on every AI code: model requested, model actually served, effort, prompt hash,
 raw output, token counts. Pinning choices:

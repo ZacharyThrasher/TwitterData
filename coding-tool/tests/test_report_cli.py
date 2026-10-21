@@ -49,7 +49,7 @@ def test_cli_build_code_flow(source_csv, tmp_path, capsys):
     items = tmp_path / "items.csv"
     store = tmp_path / "store"
     assert main(["build-items", str(source_csv), str(items)]) == 0
-    assert main(["ai-code", str(items), "--store", str(store)]) == 0
+    assert main(["ai-code", str(items), "--backend", "keyword", "--store", str(store)]) == 0
     assert main(["export", str(tmp_path / "x.csv"), "--coder", "ai-keyword-baseline", "--store", str(store)]) == 0
     assert len(list(csv.DictReader(open(tmp_path / "x.csv")))) == 3
 

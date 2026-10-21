@@ -114,7 +114,7 @@ class Codebook:
             raise CodebookError(f"unknown fields: {sorted(unknown)}")
         out = {}
         for f in self.fields:
-            if f.name in values:
+            if f.name in values and not (partial and values[f.name] in ("", None)):
                 out[f.name] = f.normalise(values[f.name])
             elif f.is_coded and not partial:
                 raise CodebookError(f"missing field {f.name}")

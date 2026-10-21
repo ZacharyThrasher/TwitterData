@@ -30,30 +30,99 @@ def cmd_code(args) -> int:
     return 0
 
 
-def cmd_ai_code(args) -> int:
-    from .ai import KeywordCoder, ReplayCoder, run_ai_coder
-    cb = _codebook(args)
-    items = load_items(args.items)
+def make_coder(args):
+    """Build the AI coder named by --backend. Only `anthropic` can cost money."""
+    from .ai import KeywordCoder, ReplayCoder
+    from .ai.local import CardiffCoder, DetoxifyCoder, OllamaCoder
+    if args.backend == "ollama":
+        return OllamaCoder(args.ollama_model, url=args.ollama_url, expected_digest=args.digest)
+    if args.backend == "detoxify":
+        return DetoxifyCoder(threshold=args.threshold)
+    if args.backend == "cardiff":
+        return CardiffCoder(threshold=args.threshold)
     if args.backend == "keyword":
-        coder = KeywordCoder()
-    elif args.backend == "replay":
+        return KeywordCoder()
+    if args.backend == "replay":
         if not args.replay_from:
-            print("--replay-from is required for the replay backend", file=sys.stderr)
-            return 2
-        coder = ReplayCoder(args.store, args.replay_from)
-    else:
-        from .ai.anthropic_coder import ALLOW_ENV, AnthropicCoder, estimate_cost
-        n = len(items) if args.limit is None else min(args.limit, len(items))
-        est = estimate_cost(n, cb, args.model)
-        print(f"Model {args.model}, effort {args.effort}, {n} items. Estimated cost: "
-              + (f"about ${est:.2f}" if est is not None else "unknown for this model"))
-        if not args.allow_paid:
-            print(f"Dry run only. Re-run with --allow-paid and {ALLOW_ENV}=1 once the spend is approved.")
-            return 2
-        coder = AnthropicCoder(args.model, args.effort, allow_paid=True)
-    stats = run_ai_coder(coder, items, cb, args.store, coder_id=args.coder, limit=args.limit, recode=args.recode)
+            raise SystemExit("--replay-from is required for the replay backend")
+        return ReplayCoder(args.store, args.replay_from)
+    from .ai.anthropic_coder import ALLOW_ENV, AnthropicCoder, estimate_cost
+    n = len(args._items) if args.limit is None else min(args.limit, len(args._items))
+    est = estimate_cost(n, _codebook(args), args.model)
+    print(f"PAID backend. Model {args.model}, effort {args.effort}, {n} items. Estimated cost: "
+          + (f"about ${est:.2f}" if est is not None else "unknown for this model"))
+    if not args.allow_paid:
+        print(f"Dry run only. Re-run with --allow-paid and {ALLOW_ENV}=1 once the spend is approved.")
+        return None
+    return AnthropicCoder(args.model, args.effort, allow_paid=True)
+
+
+def _run_coder(args, items) -> int:
+    from .ai import AICoderError, run_ai_coder
+    args._items = items
+    try:
+        coder = make_coder(args)
+    except AICoderError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    if coder is None:
+        return 2
+    try:
+        stats = run_ai_coder(coder, items, _codebook(args), args.store, coder_id=args.coder, limit=args.limit,
+                             recode=args.recode)
+    except AICoderError as e:  # setup failures such as a missing local model
+        print(f"error: {e}", file=sys.stderr)
+        return 2
     print(f"coded {stats.coded}, skipped {stats.skipped} already done, failed {stats.failed}")
     return 0 if stats.failed == 0 else 1
+
+
+def cmd_ai_code(args) -> int:
+    return _run_coder(args, load_items(args.items))
+
+
+def cmd_hatecheck(args) -> int:
+    from .hatecheck import hatecheck_report, load_cases
+    items, gold, func = load_cases(args.cases, limit_per_functionality=args.per_test)
+    args.coder = args.coder or f"hatecheck-{args.backend}"
+    rc = _run_coder(args, items)
+    if rc == 2:
+        return rc
+    text = hatecheck_report(args.store, args.coder, gold, func)
+    if args.out:
+        Path(args.out).write_text(text, encoding="utf-8")
+        print(f"Wrote {args.out}")
+    else:
+        print(text)
+    return 0
+
+
+def cmd_page(args) -> int:
+    from .webpage import write_page
+    out = write_page(load_items(args.items), _codebook(args), args.coder, args.out)
+    print(f"Wrote {out}. Send this one file to coder {args.coder}; they open it in a browser and send back the CSV.")
+    return 0
+
+
+def cmd_sample(args) -> int:
+    from .items import write_items
+    from .sample import draw_sample
+    from .store import CoderStore
+    items = load_items(args.items)
+    pre = None
+    if args.enrich_coder:
+        pre = {u: r["values"] for u, r in CoderStore(args.store, args.enrich_coder).latest().items()}
+    exclude = set()
+    for path in args.exclude or []:
+        exclude |= {it.uid for it in load_items(path)}
+    fields = [f for f in (args.enrich_fields or "").split(",") if f]
+    out, rep = draw_sample(items, args.n, seed=args.seed, prelabels=pre, fields=fields,
+                           min_per_field=args.min_per_field, exclude=exclude)
+    write_items(out, args.out)
+    print(f"Wrote {len(out)} items to {args.out}.")
+    for f, r in rep.items():
+        print(f"  {f}: {r['flagged']} flagged by {args.enrich_coder}, {r['taken']} oversampled")
+    return 0
 
 
 def cmd_import(args) -> int:
@@ -105,18 +174,52 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--store", default="work/coders")
     c.set_defaults(fn=cmd_code)
 
-    a = sub.add_parser("ai-code", help="code items with an AI coder")
+    def ai_args(a, default_backend="ollama"):
+        a.add_argument("--backend", choices=["ollama", "detoxify", "cardiff", "keyword", "replay", "anthropic"],
+                       default=default_backend,
+                       help="ollama/detoxify/cardiff run free on this machine; keyword is a test baseline; anthropic is PAID")
+        a.add_argument("--coder", help="coder id to store under (default: backend name)")
+        a.add_argument("--store", default="work/coders")
+        a.add_argument("--limit", type=int)
+        a.add_argument("--recode", action="store_true")
+        a.add_argument("--ollama-model", default="llama3.1:8b")
+        a.add_argument("--ollama-url", default="http://localhost:11434")
+        a.add_argument("--digest", help="ollama: required model digest prefix (pin)")
+        a.add_argument("--threshold", type=float, default=0.5, help="detoxify/cardiff score threshold")
+        a.add_argument("--replay-from", help="replay backend: coder id whose saved raw outputs to replay")
+        a.add_argument("--model", default="claude-opus-5-5", help="anthropic backend only")
+        a.add_argument("--effort", default="medium", choices=["low", "medium", "high", "xhigh", "max"])
+        a.add_argument("--allow-paid", action="store_true")
+
+    a = sub.add_parser("ai-code", help="code items with an AI coder (default: free local LLM via Ollama)")
     a.add_argument("items")
-    a.add_argument("--backend", choices=["keyword", "replay", "anthropic"], default="keyword")
-    a.add_argument("--coder", help="coder id to store under (default: backend name)")
-    a.add_argument("--store", default="work/coders")
-    a.add_argument("--limit", type=int)
-    a.add_argument("--recode", action="store_true")
-    a.add_argument("--replay-from", help="replay backend: coder id whose saved raw outputs to replay")
-    a.add_argument("--model", default="claude-opus-5-5")
-    a.add_argument("--effort", default="medium", choices=["low", "medium", "high", "xhigh", "max"])
-    a.add_argument("--allow-paid", action="store_true")
+    ai_args(a)
     a.set_defaults(fn=cmd_ai_code)
+
+    h = sub.add_parser("hatecheck", help="validate an AI coder's hate_speech field on HateCheck")
+    h.add_argument("cases", help="hatecheck_test_suite_cases.csv")
+    h.add_argument("--per-test", type=int, help="cap cases per functional test (faster)")
+    h.add_argument("--out")
+    ai_args(h)
+    h.set_defaults(fn=cmd_hatecheck)
+
+    pg = sub.add_parser("page", help="make a single offline HTML coding page for one coder")
+    pg.add_argument("items")
+    pg.add_argument("--coder", required=True)
+    pg.add_argument("--out", required=True)
+    pg.set_defaults(fn=cmd_page)
+
+    sm = sub.add_parser("sample", help="draw a pilot or gold-set sample, oversampling rare classes")
+    sm.add_argument("items")
+    sm.add_argument("out")
+    sm.add_argument("--n", type=int, required=True)
+    sm.add_argument("--seed", type=int, default=0)
+    sm.add_argument("--store", default="work/coders")
+    sm.add_argument("--enrich-coder", help="coder whose positive codes steer oversampling (e.g. ai-ollama)")
+    sm.add_argument("--enrich-fields", default="hate_speech,threat,slur")
+    sm.add_argument("--min-per-field", type=int, default=50)
+    sm.add_argument("--exclude", action="append", help="items file whose uids to leave out (e.g. the pilot)")
+    sm.set_defaults(fn=cmd_sample)
 
     i = sub.add_parser("import", help="load an existing flat coding CSV into the store")
     i.add_argument("csv")

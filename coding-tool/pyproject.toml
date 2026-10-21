@@ -5,12 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "blindcode"
 version = "0.1.0"
-description = "Blind reply coding tool: human coders, pluggable AI third coder, Krippendorff's alpha"
+description = "Blind reply coding tool: human coders, free local AI coders, Krippendorff's alpha"
 requires-python = ">=3.10"
 dependencies = []
 
 [project.optional-dependencies]
 anthropic = ["anthropic"]
+local = ["detoxify", "transformers", "torch"]
 dev = ["pytest", "krippendorff"]
 
 [project.scripts]
