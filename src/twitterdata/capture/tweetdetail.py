@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from twitterdata.timeutil import parse_iso_utc
+
 TWITTER_EPOCH_MS = 1288834974657
 
 
@@ -22,6 +24,8 @@ class Item:
     section: str | None
     sort_index: str | None
     tweet: dict
+    module_id: str | None = None  # entryId of the reply module the item sits in
+    appended: bool = False  # added later by "Show replies" (TimelineAddToModule)
 
 
 @dataclass
@@ -75,16 +79,10 @@ def snowflake_time(tweet_id) -> datetime | None:
 def parse_x_time(value) -> datetime | None:
     if not isinstance(value, str):
         return None
-    for fmt in ("%a %b %d %H:%M:%S %z %Y",):
-        try:
-            return datetime.strptime(value, fmt).astimezone(timezone.utc)
-        except ValueError:
-            pass
     try:
-        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return datetime.strptime(value, "%a %b %d %H:%M:%S %z %Y").astimezone(timezone.utc)
     except ValueError:
-        return None
-    return (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)).astimezone(timezone.utc)
+        return parse_iso_utc(value)
 
 
 def tweet_id(tweet: dict) -> str | None:
@@ -144,7 +142,8 @@ def _section(*client_event_infos) -> str | None:
     return None
 
 
-def _module_item(item_wrap: dict, position: int, entry_sort_index, entry_info) -> tuple[Item | None, int]:
+def _module_item(item_wrap: dict, position: int, entry_sort_index, entry_info,
+                 module_id: str | None) -> tuple[Item | None, int]:
     """Returns (item, unavailable_count) for one module item."""
     item = item_wrap.get("item") or {}
     content = item.get("itemContent") or {}
@@ -158,7 +157,7 @@ def _module_item(item_wrap: dict, position: int, entry_sort_index, entry_info) -
     else:
         row_type = "reply" if position == 0 else "nested_reply"
     return Item(row_type, position, _section(item.get("clientEventInfo"), entry_info),
-                entry_sort_index, tweet), 0
+                entry_sort_index, tweet, module_id), 0
 
 
 def _instructions(body: dict) -> list:
@@ -182,12 +181,13 @@ def parse_page(body: dict, focal_tweet_id: str | None) -> Page:
             entries = [inst.get("entry")] if inst.get("entry") else []
         elif kind == "TimelineAddToModule":
             # Expanding a reply module ("Show replies") appends items to it.
+            # Positions are provisional; the parser continues them from the
+            # module's existing items, which may be on an earlier page.
             for pos, wrap in enumerate(inst.get("moduleItems") or [], start=1):
-                found, missing = _module_item(wrap, pos, None, None)
+                found, missing = _module_item(wrap, pos, None, None, inst.get("moduleEntryId"))
                 unavailable += missing
                 if found:
-                    if found.row_type == "reply":
-                        found.row_type = "nested_reply"
+                    found.appended = True
                     items.append(found)
             continue
         else:
@@ -202,7 +202,7 @@ def parse_page(body: dict, focal_tweet_id: str | None) -> Page:
 
             if content.get("entryType") == "TimelineTimelineModule" or "items" in content:
                 for pos, wrap in enumerate(content.get("items") or []):
-                    found, missing = _module_item(wrap, pos, sort_index, entry_info)
+                    found, missing = _module_item(wrap, pos, sort_index, entry_info, eid)
                     unavailable += missing
                     if found:
                         items.append(found)

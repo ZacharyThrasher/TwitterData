@@ -108,7 +108,7 @@ new `schema/reply_table.v2.json`.
 | `capture_id` | string | no | Id of the capture. Set with --capture-id (for example the sampling tracker id `{root_tweet_id}_h06_likes_A`); defaults to the input file name without extension. |
 | `capture_file` | string | no | Input file base name (no directory). |
 | `capture_session` | integer | no | 1-based load of one thread view inside the file. A new session starts each time the thread is loaded from the top (a request without a pagination cursor), per focal tweet and sort order. |
-| `capture_time_utc` | timestamp | no | When the first response of this session was received (HAR startedDateTime), ISO 8601 UTC. For raw JSON input: --capture-time, else the file modification time. |
+| `capture_time_utc` | timestamp | no | When the first response of this session was received (HAR startedDateTime), ISO 8601 UTC. For raw JSON input, or a HAR without a readable time: --capture-time, else the file modification time. |
 | `page_index` | integer | no | 0-based index of the response (page) within the session that this row arrived in. |
 | `viewer_type` | string | no | Account type of the person who captured the page. Set with --viewer-type; the parser never inspects cookies, so it cannot detect this itself. Values: `logged_out`, `free`, `premium`, `premium_plus`, `unknown`. |
 | `viewer_label` | string | yes | Free-text label for the capturing persona (for example A or B). Set with --viewer-label. |

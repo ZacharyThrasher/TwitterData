@@ -28,6 +28,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from urllib.parse import parse_qs, urlsplit
 
+from twitterdata.timeutil import parse_iso_utc
+
 # Keys dropped at decode time, at any depth of the HAR document.
 DROPPED_HAR_KEYS = frozenset({"headers", "cookies", "postData", "queryString"})
 
@@ -64,15 +66,20 @@ def _is_tweetdetail_url(url: str) -> bool:
     return host in X_HOSTS and bool(TWEETDETAIL_PATH.match(parts.path))
 
 
-def _allowed_variables(url: str) -> tuple[str | None, str | None, bool]:
-    """Read focalTweetId, rankingMode and cursor presence from the URL."""
+def _allowed_variables(url: str) -> tuple[str | None, str | None, bool | None]:
+    """Read focalTweetId, rankingMode and cursor presence from the URL.
+
+    Cursor presence is None when the variables cannot be read (for example a
+    POST request, whose body is dropped), so the page is not mistaken for a
+    load from the top of the thread.
+    """
     try:
         raw = parse_qs(urlsplit(url).query).get("variables", [None])[0]
-        variables = json.loads(raw) if raw else {}
+        variables = json.loads(raw) if raw else None
     except (ValueError, TypeError):
-        variables = {}
+        variables = None
     if not isinstance(variables, dict):
-        variables = {}
+        return None, None, None
     focal = variables.get("focalTweetId")
     mode = variables.get("rankingMode")
     return (
@@ -80,18 +87,6 @@ def _allowed_variables(url: str) -> tuple[str | None, str | None, bool]:
         mode if isinstance(mode, str) else None,
         bool(variables.get("cursor")),
     )
-
-
-def _parse_time(value) -> datetime | None:
-    if not isinstance(value, str):
-        return None
-    try:
-        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
 
 
 def _decode_body(content: dict) -> dict | None:
@@ -107,18 +102,29 @@ def _decode_body(content: dict) -> dict | None:
     return body if isinstance(body, dict) else None
 
 
-def load_har(path: str) -> tuple[list[CaptureResponse], dict]:
-    """Return the TweetDetail responses in a HAR file and skip counts."""
+def _read_safely(path: str):
+    """Decode a capture file with secret-bearing keys dropped at decode time.
+
+    Every input goes through this, whatever its extension, so a HAR saved
+    under another name gets the same protection.
+    """
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as f:
-            har = json.load(f, object_pairs_hook=_drop_secret_keys)
+            return json.load(f, object_pairs_hook=_drop_secret_keys)
     except (OSError, ValueError):
-        raise CaptureError(f"could not read {os.path.basename(path)} as HAR JSON") from None
+        raise CaptureError(f"could not read {os.path.basename(path)} as JSON") from None
 
-    entries = har.get("log", {}).get("entries", []) if isinstance(har, dict) else []
+
+def _har_responses(har: dict) -> tuple[list[CaptureResponse], dict]:
+    """Return the TweetDetail responses in a decoded HAR and skip counts."""
+    entries = har.get("log", {}).get("entries", [])
+    if not isinstance(entries, list):
+        entries = []
     responses: list[CaptureResponse] = []
     stats = {"entries": len(entries), "tweetdetail": 0, "skipped_status": 0, "skipped_body": 0}
     for i, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            continue
         request = entry.get("request") or {}
         url = request.get("url")
         if not isinstance(url, str) or not _is_tweetdetail_url(url):
@@ -135,46 +141,39 @@ def load_har(path: str) -> tuple[list[CaptureResponse], dict]:
         focal, mode, has_cursor = _allowed_variables(url)
         responses.append(CaptureResponse(
             entry_index=i,
-            started_utc=_parse_time(entry.get("startedDateTime")),
+            started_utc=parse_iso_utc(entry.get("startedDateTime")),
             focal_tweet_id=focal,
             ranking_mode=mode,
             has_cursor=has_cursor,
             body=body,
         ))
-    del har, entries
     return responses, stats
 
 
-def load_response_json(path: str, capture_time: datetime | None = None) -> tuple[list[CaptureResponse], dict]:
-    """Load a single TweetDetail response body saved from browser dev tools.
+def load_capture(path: str, capture_time: datetime | None = None) -> tuple[list[CaptureResponse], dict]:
+    """Load a HAR export, or a single TweetDetail response body saved as JSON.
 
-    Such a file has no request, so focal tweet id, ranking mode and cursor
-    presence are unknown and come from flags or the data (a first page is
-    recognised by the focal tweet entry it contains).
+    A saved response has no request, so focal tweet id, ranking mode and
+    cursor presence are unknown and come from flags or the data (a first
+    page is recognised by the focal tweet entry it contains). Its capture
+    time is `capture_time`, else the file modification time.
     """
-    try:
-        with open(path, "r", encoding="utf-8", errors="replace") as f:
-            body = json.load(f)
-    except (OSError, ValueError):
-        raise CaptureError(f"could not read {os.path.basename(path)} as JSON") from None
-    if not isinstance(body, dict) or "data" not in body:
-        raise CaptureError(f"{os.path.basename(path)} is not a TweetDetail response body")
+    doc = _read_safely(path)
+    name = os.path.basename(path)
+    if isinstance(doc, dict) and isinstance(doc.get("log"), dict):
+        return _har_responses(doc)
+    if not isinstance(doc, dict) or "data" not in doc:
+        raise CaptureError(f"{name} is neither a HAR file nor a TweetDetail response body")
     if capture_time is None:
         capture_time = datetime.fromtimestamp(os.path.getmtime(path), tz=timezone.utc)
     resp = CaptureResponse(entry_index=0, started_utc=capture_time, focal_tweet_id=None,
-                           ranking_mode=None, has_cursor=None, body=body)
+                           ranking_mode=None, has_cursor=None, body=doc)
     return [resp], {"entries": 1, "tweetdetail": 1, "skipped_status": 0, "skipped_body": 0}
 
 
-def load_capture(path: str, capture_time: datetime | None = None) -> tuple[list[CaptureResponse], dict]:
-    """Load a .har file, or a raw response .json file."""
-    if path.lower().endswith(".har"):
-        return load_har(path)
-    try:
-        with open(path, "r", encoding="utf-8", errors="replace") as f:
-            head = f.read(4096)
-    except OSError:
-        raise CaptureError(f"could not open {os.path.basename(path)}") from None
-    if '"log"' in head and '"entries"' in head:
-        return load_har(path)
-    return load_response_json(path, capture_time)
+def load_har(path: str) -> tuple[list[CaptureResponse], dict]:
+    """Load a HAR file; anything else is an error."""
+    doc = _read_safely(path)
+    if not isinstance(doc, dict) or not isinstance(doc.get("log"), dict):
+        raise CaptureError(f"{os.path.basename(path)} is not a HAR file")
+    return _har_responses(doc)

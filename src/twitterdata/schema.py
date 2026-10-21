@@ -48,7 +48,8 @@ COLUMNS: tuple[Column, ...] = (
            "and sort order."),
     Column("capture_time_utc", "timestamp", False, "capture",
            "When the first response of this session was received (HAR startedDateTime), ISO 8601 UTC. "
-           "For raw JSON input: --capture-time, else the file modification time."),
+           "For raw JSON input, or a HAR without a readable time: --capture-time, else the file "
+           "modification time."),
     Column("page_index", "integer", False, "capture",
            "0-based index of the response (page) within the session that this row arrived in."),
     Column("viewer_type", "string", False, "capture",

@@ -5,13 +5,14 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 
 from twitterdata import schema
 from twitterdata.capture.parser import CaptureMeta, parse_capture
 from twitterdata.capture.safe_har import CaptureError
 from twitterdata.output import WRITERS
 from twitterdata.privacy import DEFAULT_SALT_FILE, SALT_ENV, load_salt
+from twitterdata.timeutil import parse_iso_utc
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SCHEMA_DOC = os.path.join(REPO_ROOT, "docs", "reply_table_schema.md")
@@ -20,8 +21,10 @@ BEGIN, END = "<!-- BEGIN GENERATED COLUMNS -->", "<!-- END GENERATED COLUMNS -->
 
 
 def _utc(value: str) -> datetime:
-    dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    return (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)).astimezone(timezone.utc)
+    dt = parse_iso_utc(value)
+    if dt is None:
+        raise argparse.ArgumentTypeError(f"not an ISO 8601 time: {value}")
+    return dt
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -59,6 +62,9 @@ def render_doc(current: str) -> str:
 
 def _cmd_schema(args) -> int:
     if args.write:
+        if not os.path.exists(SCHEMA_DOC):
+            print("schema --write needs a source checkout (pip install -e .)", file=sys.stderr)
+            return 2
         with open(SCHEMA_DOC, "r", encoding="utf-8") as f:
             doc = f.read()
         with open(SCHEMA_DOC, "w", encoding="utf-8") as f:
@@ -79,9 +85,18 @@ def _cmd_parse(args) -> int:
     if out.lower().endswith(".har") or out in {os.path.abspath(c) for c in args.captures}:
         print("refusing to write output over a capture file", file=sys.stderr)
         return 2
+    stems = [os.path.splitext(os.path.basename(c))[0] for c in args.captures]
+    if len(set(stems)) < len(stems):
+        print("two inputs share a file name, so their default capture ids would collide; "
+              "rename them or run once per capture with --capture-id", file=sys.stderr)
+        return 2
     fmt = args.format or ("jsonl" if out.lower().endswith((".jsonl", ".ndjson")) else "csv")
 
-    salt = load_salt(args.salt_file)
+    try:
+        salt = load_salt(args.salt_file)
+    except (OSError, ValueError) as e:
+        print(f"error: could not load the hash salt: {e}", file=sys.stderr)
+        return 2
     rows = []
     for path in args.captures:
         meta = CaptureMeta(
@@ -100,6 +115,8 @@ def _cmd_parse(args) -> int:
               file=sys.stderr)
         if st["redacted_cells"]:
             print(f"warning: {st['redacted_cells']} secret-shaped cells redacted", file=sys.stderr)
+        if st["no_author_id"]:
+            print(f"warning: {st['no_author_id']} tweets skipped without an author id", file=sys.stderr)
         if st["no_focal_id"]:
             print(f"warning: {st['no_focal_id']} pages skipped without a focal tweet id "
                   "(pass --focal-tweet-id)", file=sys.stderr)

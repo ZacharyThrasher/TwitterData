@@ -259,3 +259,77 @@ def test_salt_file_created_private_and_reused(tmp_path, monkeypatch):
     assert load_salt(str(path)) == first
     assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
     assert pseudonym(first, "x", "user", "1") != pseudonym(b"other", "x", "user", "1")
+
+
+# Review fixes
+
+
+def test_appended_module_items_continue_module_positions(har_path):
+    s1 = by_tweet(parse(har_path).rows, 1)
+    nested = s1["2000000000000000206"]
+    assert nested["row_type"] == "nested_reply"
+    assert nested["module_position"] == 1  # after REPLY_C at position 0
+    assert nested["sort_index"] == "7000"
+    assert nested["conversation_section"] == "HighQuality"
+
+
+def test_unreadable_variables_do_not_restart_sessions(tmp_path):
+    url = "https://x.com/i/api/graphql/AbC/TweetDetail"  # no variables (e.g. a POST)
+    path = tmp_path / "post.har"
+    path.write_text(json.dumps(syn.har([
+        syn.har_entry(url, syn.page_top()),
+        syn.har_entry(url, syn.page_next()),
+    ])))
+    rows = parse(str(path)).rows
+    assert {r["capture_session"] for r in rows} == {1}
+    assert [r["display_rank"] for r in rows if r["row_type"] == "reply"] == [1, 2, 3, 4]
+    assert {(r["sort_order"], r["sort_order_source"]) for r in rows} == {("unknown", "unknown")}
+
+
+def test_tweets_without_ids_are_skipped(tmp_path):
+    no_id = syn.tweet("2000000000000000999", syn.FREE, reply_to=syn.FOCAL_ID)
+    del no_id["rest_id"], no_id["legacy"]["id_str"]
+    no_author = syn.tweet("2000000000000000998", syn.user(None, "Ghost"), reply_to=syn.FOCAL_ID)
+    del no_author["legacy"]["user_id_str"]
+    path = tmp_path / "ids.har"
+    path.write_text(json.dumps(syn.har([syn.har_entry(syn.tweetdetail_url(), syn.body([
+        syn.tweet_entry(syn.FOCAL, 9), syn.module("n", [no_id], 8), syn.module("m", [no_author], 7),
+        syn.module("a", [syn.REPLY_A], 6)]))])))
+    result = parse(str(path))
+    assert [r["tweet_id"] for r in result.rows] == [syn.REPLY_A["rest_id"]]
+    assert result.stats["unavailable"] == 1 and result.stats["no_author_id"] == 1
+
+
+def test_har_with_other_extension_is_still_scrubbed(tmp_path, capsys):
+    doc = syn.standard_har()
+    doc["log"]["pages"] = [{"title": "x" * 10000}]  # pushes "entries" far into the file
+    path = tmp_path / "capture.json"
+    path.write_text(json.dumps(doc))
+    out = tmp_path / "out.csv"
+    assert main(["parse", str(path), "-o", str(out)]) == 0
+    assert syn.SENTINEL not in out.read_text() + capsys.readouterr().err
+    assert len(out.read_text().splitlines()) == 11
+
+
+def test_long_fraction_timestamps_parse_everywhere():
+    from twitterdata.timeutil import parse_iso_utc
+    dt = parse_iso_utc("2026-10-21T13:33:13.1234567Z")
+    assert dt.isoformat() == "2026-10-21T13:33:13.123456+00:00"
+    assert parse_iso_utc("2026-10-21T08:33:13.1-05:00").hour == 13
+    assert parse_iso_utc("nonsense") is None
+
+
+def test_empty_salt_file_is_a_clean_error(har_path, tmp_path, monkeypatch, capsys):
+    monkeypatch.delenv(SALT_ENV)
+    salt = tmp_path / "salt"
+    salt.write_text("")
+    assert main(["parse", har_path, "-o", str(tmp_path / "o.csv"), "--salt-file", str(salt)]) == 2
+    assert "hash salt" in capsys.readouterr().err
+
+
+def test_inputs_with_same_name_are_refused(har_path, tmp_path):
+    other = tmp_path / "sub"
+    other.mkdir()
+    twin = other / "capture.har"
+    twin.write_text(open(har_path).read())
+    assert main(["parse", har_path, str(twin), "-o", str(tmp_path / "o.csv")]) == 2

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 
 from twitterdata.capture.safe_har import CaptureResponse, load_capture
 from twitterdata.capture.tweetdetail import parse_page, tweet_fields, tweet_id, user_fields
@@ -42,6 +42,8 @@ class _Session:
     display_index: int = 0
     display_rank: int = 0
     seen: set = field(default_factory=set)
+    # module entryId -> [next module_position, sort_index, section]
+    modules: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -86,13 +88,33 @@ def _focal_columns(salt: bytes, focal: dict | None) -> dict:
     }
 
 
+def _place_in_module(session: _Session, item) -> None:
+    """Give items appended by "Show replies" positions after the module's
+    existing items, and the module's sort index and section."""
+    if item.module_id is None:
+        return
+    state = session.modules.get(item.module_id)
+    if not item.appended:
+        if state is None:
+            session.modules[item.module_id] = [item.module_position + 1, item.sort_index, item.section]
+        else:
+            state[0] = max(state[0], item.module_position + 1)
+        return
+    if state is None:
+        state = session.modules[item.module_id] = [1, None, None]
+    item.module_position = state[0]
+    state[0] += 1
+    item.sort_index = item.sort_index or state[1]
+    item.section = item.section or state[2]
+
+
 def build_rows(responses: list[CaptureResponse], meta: CaptureMeta, salt: bytes,
-               capture_file: str) -> ParseResult:
+               capture_file: str, fallback_time: datetime | None = None) -> ParseResult:
     capture_id = meta.capture_id or os.path.splitext(capture_file)[0]
     sessions: dict[tuple[str, str], _Session] = {}
     all_sessions: list[_Session] = []
     rows: list[dict] = []
-    stats = {"pages": 0, "unavailable": 0, "duplicates": 0, "no_focal_id": 0}
+    stats = {"pages": 0, "unavailable": 0, "duplicates": 0, "no_focal_id": 0, "no_author_id": 0}
     last_focal_id = meta.focal_tweet_id
 
     for resp in responses:
@@ -113,7 +135,7 @@ def build_rows(responses: list[CaptureResponse], meta: CaptureMeta, salt: bytes,
         top_of_thread = resp.has_cursor is False or (resp.has_cursor is None and page.focal is not None)
         session = sessions.get(key)
         if session is None or top_of_thread:
-            started = resp.started_utc or meta.capture_time
+            started = resp.started_utc or meta.capture_time or fallback_time
             session = _Session(len(all_sessions) + 1, focal_id, sort_order, sort_source,
                                started, rank_is_absolute=top_of_thread)
             sessions[key] = session
@@ -124,16 +146,23 @@ def build_rows(responses: list[CaptureResponse], meta: CaptureMeta, salt: bytes,
 
         for item in page.items:
             t = tweet_fields(item.tweet)
+            u = user_fields(item.tweet)
+            if t["id"] is None:
+                stats["unavailable"] += 1
+                continue
+            if u["id"] is None:
+                stats["no_author_id"] += 1
+                continue
             if t["id"] in session.seen:
                 stats["duplicates"] += 1
                 continue
             session.seen.add(t["id"])
+            _place_in_module(session, item)
             session.display_index += 1
             rank = None
             if item.row_type == "reply":
                 session.display_rank += 1
                 rank = session.display_rank
-            u = user_fields(item.tweet)
             rows.append({
                 "_session": session,
                 "schema_version": SCHEMA_VERSION,
@@ -202,6 +231,7 @@ def build_rows(responses: list[CaptureResponse], meta: CaptureMeta, salt: bytes,
 
 def parse_capture(path: str, meta: CaptureMeta, salt: bytes) -> ParseResult:
     responses, load_stats = load_capture(path, meta.capture_time)
-    result = build_rows(responses, meta, salt, os.path.basename(path))
+    mtime = datetime.fromtimestamp(os.path.getmtime(path), tz=timezone.utc)
+    result = build_rows(responses, meta, salt, os.path.basename(path), fallback_time=mtime)
     result.stats = {**load_stats, **result.stats}
     return result

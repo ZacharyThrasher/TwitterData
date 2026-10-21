@@ -46,7 +46,7 @@
       "type": "timestamp",
       "nullable": false,
       "group": "capture",
-      "description": "When the first response of this session was received (HAR startedDateTime), ISO 8601 UTC. For raw JSON input: --capture-time, else the file modification time."
+      "description": "When the first response of this session was received (HAR startedDateTime), ISO 8601 UTC. For raw JSON input, or a HAR without a readable time: --capture-time, else the file modification time."
     },
     {
       "name": "page_index",
