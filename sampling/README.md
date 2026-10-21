@@ -22,7 +22,7 @@ python sampling/tracker.py add-seed SomeHandle --topic sports --account-type new
 python sampling/tracker.py plan-sessions --start 2026-11-02 --seed 20261102
 
 # during a session: log every post you screen, pass or fail
-python sampling/tracker.py screen 2112779086036599242 --handle SomeHandle --followers 480000 \
+python sampling/tracker.py screen 2000000000000000001 --handle SomeHandle --followers 480000 \
   --posted 2026-11-02T14:05:00Z --replies 32 --session S0004 \
   --topic sports --account-type news_official --politics none_unclear
 
@@ -30,11 +30,11 @@ python sampling/tracker.py screen 2112779086036599242 --handle SomeHandle --foll
 python sampling/tracker.py due
 
 # after each capture (point at the parser output, never a raw .har)
-python sampling/tracker.py mark 2112779086036599242_h01_relevance_A --status done \
-  --file-ref captures/2112779086036599242_h01_relevance_A.csv --n-replies 187
+python sampling/tracker.py mark 2000000000000000001_h01_relevance_A --status done \
+  --file-ref captures/2000000000000000001_h01_relevance_A.csv --n-replies 187
 
 # if a thread disappears
-python sampling/tracker.py drop 2112779086036599242 --reason deleted
+python sampling/tracker.py drop 2000000000000000001 --reason deleted
 
 # progress, stop rule and integrity
 python sampling/tracker.py status

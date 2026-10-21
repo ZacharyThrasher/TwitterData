@@ -98,7 +98,7 @@ Why 144: `data-and-methods.md` section 6.1 estimates 100 to 150 threads (about 3
 | 6 hours | 30 min early to 45 min late | Relevance, Recent, Likes | 3 |
 | 24 hours | 90 min early to 2 h late | Relevance, Recent, Likes | 3 |
 
-- Capture ids follow `{root_tweet_id}_h{01|06|24}_{relevance|recent|likes}_{viewer}`, for example `2112779086036599242_h06_likes_A`. The parser accepts this id verbatim as `capture_id`.
+- Capture ids follow `{root_tweet_id}_h{01|06|24}_{relevance|recent|likes}_{viewer}`, for example `2000000000000000001_h06_likes_A`. The parser accepts this id verbatim as `capture_id`.
 - Within an age, the three sorts are taken back to back in a fixed order (Relevance, Likes, Recent) to keep them as close in time as possible.
 - A capture taken outside its window is kept and flagged `late`. Main analyses use on-time captures; a sensitivity analysis adds late ones.
 - `tracker.py due` lists what is open, coming up and overdue.

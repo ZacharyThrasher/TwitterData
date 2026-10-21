@@ -55,11 +55,11 @@ def test_enum_and_null_rules(small):
 
 def test_ids_stay_exact_strings(tmp_path, small):
     df = small["replies"].head(20).copy()
-    df["tweet_id"] = "2112779086036599242"
+    df["tweet_id"] = "2000000000000000001"
     df["display_index"] = range(1, 21)
     df.to_csv(tmp_path / "a.csv", index=False)
     out = read_reply_tables([tmp_path])
-    assert (out["tweet_id"] == "2112779086036599242").all()
+    assert (out["tweet_id"] == "2000000000000000001").all()
 
 
 def test_jsonl_and_duplicate_capture_guard(tmp_path, small):
