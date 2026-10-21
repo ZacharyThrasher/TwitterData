@@ -1,0 +1,69 @@
+{
+  "version": "1.0",
+  "notes": "Frozen with docs/preregistration.md. Any change after the first thread is selected must be logged in the Deviations section of the pre-registration.",
+  "strata": {
+    "topic": [
+      "politics_government",
+      "social_culture_war",
+      "streamer_gaming",
+      "sports",
+      "news_events",
+      "entertainment_celebrity"
+    ],
+    "account_type": [
+      "paid_clipper",
+      "organic_creator",
+      "news_official"
+    ],
+    "poster_politics": [
+      "left",
+      "right",
+      "none_unclear"
+    ],
+    "follower_band": [
+      "under_250k",
+      "250k_plus"
+    ],
+    "language": [
+      "en",
+      "es"
+    ]
+  },
+  "quotas": {
+    "primary_cell": "topic x account_type, language en",
+    "per_primary_cell": 7,
+    "language_supplement": {
+      "language": "es",
+      "per_primary_cell": 1
+    },
+    "balancing_targets": {
+      "follower_band_min_per_band_overall": 50,
+      "poster_politics_min_left_overall": 20,
+      "poster_politics_min_right_overall": 20,
+      "poster_politics_max_left_right_ratio": 1.5
+    }
+  },
+  "eligibility": {
+    "max_age_minutes_at_discovery": 40,
+    "min_replies_at_discovery": 15,
+    "min_poster_followers": 10000,
+    "must_be_original_post_or_quote": true,
+    "exclude_if_protected_account": true,
+    "exclude_if_poster_already_selected": true
+  },
+  "capture": {
+    "ages_hours": [1, 6, 24],
+    "sorts": ["relevance", "recent", "likes"],
+    "viewers": ["A"],
+    "window_minutes": {
+      "1": [-10, 20],
+      "6": [-30, 45],
+      "24": [-90, 120]
+    },
+    "max_reply_scroll": 200
+  },
+  "stopping": {
+    "collection_days": 56,
+    "min_threads_for_confirmatory": 100
+  }
+}

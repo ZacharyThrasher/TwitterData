@@ -19,5 +19,5 @@ twitterdata = "twitterdata.cli:main"
 where = ["src"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "sampling"]
 pythonpath = ["src"]
