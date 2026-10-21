@@ -101,6 +101,11 @@ def test_prompt_contains_codebook_and_context(codebook):
     assert "DirtbagLeft1234" in user_prompt(ITEMS[0], codebook)
 
 
+def test_reading_notes_reach_ai_prompt_but_not_codebook_hash(codebook):
+    assert "Reading notes for AI coders" in system_prompt(codebook)
+    assert "Reading notes" not in codebook.render()  # human coders never see them
+
+
 def test_cost_estimate(codebook):
     assert 0 < estimate_cost(545, codebook) < 50
     assert estimate_cost(10, codebook, "unknown-model") is None

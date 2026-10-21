@@ -1,0 +1,16 @@
+Reading notes for AI coders (not shown to human coders; the codebook above is unchanged).
+
+Both threads are about one event: Asmongold and Adin Ross offered QTCinderella $200,000 for a charity of her choice if she let them prove her Streamer Awards are not rigged. "The offer" or "the stunt" in the stance field means that event.
+
+Who is who:
+- Critics of the offer are QTCinderella (whose awards are questioned) and @DirtbagLeft1234 (the child OP, who said to just give the money to charity without the stunt).
+- In child replies, "you" usually means @DirtbagLeft1234, and "he", "him", "bro" or "the roach king" usually means Asmongold (or Adin Ross).
+- In parent replies, "she", "her" or "QT" means QTCinderella, and "he" or "they" usually means Asmongold and Adin Ross.
+
+How these readings map to stance:
+- pro_stunt: defends Asmongold/Adin, their generosity or motives (for example "he already donates"); attacks, insults or mocks @DirtbagLeft1234 or leftists for criticising the offer; says the Streamer Awards are rigged; attacks QTCinderella or her event.
+- anti_stunt: calls the offer a stunt, publicity or bullying; defends QTCinderella or her awards; agrees the money should just go to charity; attacks Asmongold or Adin.
+- A short insult aimed at the person being replied to still takes a side, because that person took a side. Code it by whose side it is on, not as off_topic or neutral.
+- off_topic only when the reply has no plausible link to this event or the people in it.
+
+"From its text only" in the instructions means: ignore anything about the author (handle, verification, follower counts). Always use the thread context to read the reply.
