@@ -7,6 +7,7 @@ Research code for the TwitterHate project: how X ranking and monetisation reward
 - `src/twitterdata/capture/`: safe capture parser that turns X thread captures into the reply table ([schema](docs/reply_table_schema.md)).
 - `src/twitterdata/bluesky/`: Bluesky comparison collector, same reply table with `platform = bluesky` ([mapping](docs/bluesky_mapping.md)).
 - `analysis-pipeline/`: runs the pre-registered tests (T1 to T3, T9, T10, O1, O2) and exploratory tests A1 to A9 on many reply tables ([README](analysis-pipeline/README.md)).
+- `clip_monitor/`: clip-economy monitor. Snapshots public clip-bounty campaign listings (buyer, rate per 1,000 views, platforms, topic) and tags paid clipper accounts on X. See `docs/clip-monitor/README.md`.
 
 Raw `.har` captures contain login tokens and must never be committed.
 
