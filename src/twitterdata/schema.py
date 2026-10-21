@@ -68,7 +68,8 @@ COLUMNS: tuple[Column, ...] = (
     Column("age_bucket", "string", True, "capture",
            "Thread age bucket at capture time (for example h01, h06, h24). Set with --age-bucket."),
     # Thread (focal tweet) context: identical on every row of a session.
-    Column("thread_id", "string", True, "thread", "Conversation root tweet id (conversation_id_str of the focal tweet)."),
+    Column("thread_id", "string", True, "thread", "Conversation root tweet id: conversation_id_str of the focal tweet, or of the replies "
+           "when the capture began mid-thread and the focal tweet was not captured."),
     Column("focal_tweet_id", "string", False, "thread", "Tweet whose reply list was captured (focalTweetId)."),
     Column("focal_author_id_hash", "string", True, "thread", "HMAC hash of the focal tweet author's user id."),
     Column("focal_author_followers", "integer", True, "thread", "Focal author follower count at capture."),

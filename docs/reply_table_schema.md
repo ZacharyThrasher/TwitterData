@@ -120,7 +120,7 @@ new `schema/reply_table.v2.json`.
 
 | Column | Type | Null | Description |
 | --- | --- | --- | --- |
-| `thread_id` | string | yes | Conversation root tweet id (conversation_id_str of the focal tweet). |
+| `thread_id` | string | yes | Conversation root tweet id: conversation_id_str of the focal tweet, or of the replies when the capture began mid-thread and the focal tweet was not captured. |
 | `focal_tweet_id` | string | no | Tweet whose reply list was captured (focalTweetId). |
 | `focal_author_id_hash` | string | yes | HMAC hash of the focal tweet author's user id. |
 | `focal_author_followers` | integer | yes | Focal author follower count at capture. |

@@ -191,7 +191,9 @@ def test_capture_started_mid_thread(tmp_path):
     rows = parse(str(path)).rows
     assert all(r["rank_is_absolute"] is False for r in rows)
     assert rows[0]["display_rank"] == 1
-    assert rows[0]["thread_id"] is None and rows[0]["focal_tweet_id"] == syn.FOCAL_ID
+    assert rows[0]["thread_id"] == syn.ROOT_ID  # from the replies; the focal tweet is absent
+    assert rows[0]["focal_author_followers"] is None
+    assert rows[0]["focal_tweet_id"] == syn.FOCAL_ID
 
 
 def test_no_ranking_mode_defaults_to_relevance(tmp_path):
@@ -257,7 +259,8 @@ def test_salt_file_created_private_and_reused(tmp_path, monkeypatch):
     path = tmp_path / "cfg" / "hash_salt"
     first = load_salt(str(path))
     assert load_salt(str(path)) == first
-    assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
+    if os.name == "posix":  # Windows does not apply POSIX permission bits
+        assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
     assert pseudonym(first, "x", "user", "1") != pseudonym(b"other", "x", "user", "1")
 
 
