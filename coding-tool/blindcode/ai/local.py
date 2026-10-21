@@ -45,9 +45,10 @@ def _http(base_url: str) -> Transport:
 
 class OllamaCoder:
     def __init__(self, model: str = DEFAULT_OLLAMA_MODEL, *, url: str = DEFAULT_OLLAMA_URL, seed: int = 42,
-                 expected_digest: str | None = None, transport: Transport | None = None):
+                 expected_digest: str | None = None, transport: Transport | None = None, num_ctx: int = 8192):
         self.model = model if ":" in model else model + ":latest"  # Ollama lists tags explicitly
         self.seed = seed
+        self.num_ctx = num_ctx
         self.expected_digest = expected_digest
         # One coder id per model, so switching models never mixes codes under one id
         self.name = "ai-ollama-" + re.sub(r"[^A-Za-z0-9_.-]", "-", self.model)
@@ -58,9 +59,11 @@ class OllamaCoder:
         """Content digest of the local model; fails if it is missing or differs from the expected one."""
         if self._digest is None:
             tags = self._call("/api/tags", None).get("models", [])
-            match = [m for m in tags if m.get("name") == self.model or m.get("model") == self.model]
+            want = self.model.lower()  # Ollama keeps the case a model was created with
+            match = [m for m in tags if want in (m.get("name", "").lower(), m.get("model", "").lower())]
             if not match:
                 raise AICoderSetupError(f"model {self.model!r} is not pulled. Run: ollama pull {self.model}")
+            self.model = match[0].get("name") or match[0].get("model")
             self._digest = match[0].get("digest", "")
             if self.expected_digest and not self._digest.startswith(self.expected_digest):
                 raise AICoderSetupError(f"model digest {self._digest[:12]} differs from expected {self.expected_digest[:12]}")
@@ -72,14 +75,15 @@ class OllamaCoder:
             "model": self.model,
             "stream": False,
             "format": output_schema(codebook),
-            "options": {"temperature": 0, "seed": self.seed},
+            # num_ctx: Ollama's default window can silently cut the codebook off the prompt
+            "options": {"temperature": 0, "seed": self.seed, "num_ctx": self.num_ctx},
             "messages": [{"role": "system", "content": system_prompt(codebook)},
                          {"role": "user", "content": user_prompt(item, codebook)}],
         })
         text = (resp.get("message") or {}).get("content", "")
         values = parse_output(text, codebook)
         meta = {"model": self.model, "model_digest": digest, "temperature": 0, "seed": self.seed,
-                "done_reason": resp.get("done_reason"), "eval_count": resp.get("eval_count")}
+                "num_ctx": self.num_ctx, "done_reason": resp.get("done_reason"), "eval_count": resp.get("eval_count")}
         return AIResult(values, text, meta)
 
 

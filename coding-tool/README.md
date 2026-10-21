@@ -73,6 +73,11 @@ Sessions resume where they stopped.
 | `replay` | free | as saved | Re-parses raw outputs saved by an earlier AI run (`--replay-from <coder>`). |
 | `anthropic` | **paid** | every field | Claude, pinned model. Off by default; see below. |
 
+LLM backends (`ollama`, `anthropic`) first write a short `rationale` (what the reply claims and
+whom it supports or attacks), then the codes. The rationale stays in the saved raw output for
+audit and is never stored as a code. The prompt version is part of the saved prompt hash, so runs
+made with different prompts can be told apart; give each prompt version its own `--coder` id.
+
 Fields a backend does not cover are left blank and count as missing in the report (shown N/A).
 The classifiers' "hate" score is only a proxy: it does not apply the codebook's strict
 protected-characteristic test.

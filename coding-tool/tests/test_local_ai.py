@@ -34,7 +34,7 @@ def test_ollama_request_is_deterministic_and_pinned(tmp_path, codebook):
     assert stats.coded == 2
     path, body = fake.calls[1]
     assert path == "/api/chat" and body["model"] == "llama3.1:8b" and body["stream"] is False
-    assert body["options"] == {"temperature": 0, "seed": 42}
+    assert body["options"] == {"temperature": 0, "seed": 42, "num_ctx": 8192}
     assert body["format"] == output_schema(codebook)
     assert [c[0] for c in fake.calls].count("/api/tags") == 1  # digest looked up once per run
     rec = CoderStore(tmp_path, "ai-ollama-llama3.1-8b").latest()["u1"]
@@ -134,3 +134,19 @@ def test_replay_works_for_partial_backends(tmp_path, codebook):
     run_ai_coder(KeywordCoder(), ITEMS, codebook, tmp_path)
     stats = run_ai_coder(ReplayCoder(tmp_path, "ai-keyword-baseline"), ITEMS, codebook, tmp_path, coder_id="r")
     assert stats.coded == 2 and stats.failed == 0
+
+
+def test_ollama_model_name_is_case_insensitive(codebook):
+    fake = FakeOllama([json.dumps(full_values())], models=("Qwen2.5:14b",))
+    coder = OllamaCoder("qwen2.5:14b", transport=fake)
+    r = coder.code(ITEMS[0], codebook)
+    assert fake.calls[1][1]["model"] == "Qwen2.5:14b" and r.meta["model"] == "Qwen2.5:14b"
+
+
+def test_rationale_comes_first_and_is_not_stored(tmp_path, codebook):
+    schema = output_schema(codebook)
+    assert list(schema["properties"])[0] == "rationale" and schema["required"][0] == "rationale"
+    raw = json.dumps({"rationale": "Defends the offer by attacking the critic.", **full_values()})
+    run_ai_coder(OllamaCoder(transport=FakeOllama([raw, raw])), ITEMS, codebook, tmp_path)
+    rec = CoderStore(tmp_path, "ai-ollama-llama3.1-8b").latest()["u1"]
+    assert "rationale" not in rec["values"] and "attacking the critic" in rec["meta"]["raw"]
