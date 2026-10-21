@@ -2,7 +2,7 @@
 
 Picks threads for the study by fixed rules, schedules their captures, and records what happened to each one. The rules come from `docs/preregistration.md` and live in `config.json`.
 
-Python 3.9+, standard library only. Tests: `python -m unittest discover sampling`.
+Python 3.10+, standard library only. Tests: `python -m unittest discover sampling`.
 
 ## Files in `data/`
 

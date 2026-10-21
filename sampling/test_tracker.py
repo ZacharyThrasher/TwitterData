@@ -40,6 +40,7 @@ class TrackerTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.data = self.tmp.name
         run(self.data, "init")
+        run(self.data, "plan-sessions", "--start", "2026-11-02", "--days", "1", "--per-day", "1", "--seed", "1")
         self.store = tracker.Store(self.data, tracker.DEFAULT_CONFIG)
 
     def tearDown(self):
@@ -148,8 +149,8 @@ class TrackerTest(unittest.TestCase):
         self.assertEqual({r[0] for r in rows}, {"OPEN"})
 
     def test_plan_sessions_is_reproducible_and_covers_day(self):
-        run(self.data, "plan-sessions", "--start", "2026-11-02", "--days", "2", "--per-day", "3", "--seed", "42")
-        first = [s["start_utc"] for s in self.store.read("sessions")]
+        run(self.data, "plan-sessions", "--start", "2026-11-02", "--days", "2", "--per-day", "3", "--seed", "42", "--append")
+        first = [s["start_utc"] for s in self.store.read("sessions")][1:]
         other = tempfile.TemporaryDirectory()
         run(other.name, "plan-sessions", "--start", "2026-11-02", "--days", "2", "--per-day", "3", "--seed", "42")
         second = [s["start_utc"] for s in tracker.Store(other.name, tracker.DEFAULT_CONFIG).read("sessions")]
@@ -170,6 +171,72 @@ class TrackerTest(unittest.TestCase):
         self.assertTrue(s["stop"])
         self.assertEqual(s["stop_reason"], "collection window ended")
         self.assertFalse(s["confirmatory"])
+
+
+    def test_unknown_session_rejected(self):
+        code, out = screen(self.data, "9400", "lee", session="S9999")
+        self.assertEqual(code, 2)
+        self.assertIn("unknown session", out)
+
+    def test_replanning_sessions_needs_append(self):
+        code, out = run(self.data, "plan-sessions", "--start", "2026-11-02", "--seed", "1")
+        self.assertEqual(code, 2)
+        code, out = run(self.data, "plan-sessions", "--start", "2026-11-02", "--per-day", "0", "--seed", "1", "--append")
+        self.assertEqual(code, 2)
+
+    def test_handle_with_at_sign_is_same_poster(self):
+        screen(self.data, "9500", "carol")
+        screen(self.data, "9501", " @Carol", topic="news_events")
+        self.assertIn("poster_already_in_sample", self.store.read("candidates")[-1]["reason"])
+
+    def test_compressed_har_refused(self):
+        screen(self.data, "9600", "mo")
+        for ref in ("x/raw.har.gz", "x/raw.HAR.zip", "x/raw.har "):
+            code, _ = run(self.data, "mark", "9600_h01_likes_A", "--status", "done", "--file-ref", ref)
+            self.assertEqual(code, 2, ref)
+
+    def test_no_selection_after_collection_window(self):
+        screen(self.data, "9700", "ned")
+        code, out = screen(self.data, "9701", "ola", topic="news_events",
+                           posted="2027-01-10T12:00:00Z", discovered="2027-01-10T12:20:00Z")
+        self.assertEqual(self.store.read("candidates")[-1]["reason"], "collection_window_ended")
+
+    def test_early_capture_failure_drops_and_reopens(self):
+        screen(self.data, "9800", "pat")
+        for c in self.store.read("captures"):
+            if c["age_hours"] in ("1", "6"):
+                run(self.data, "mark", c["capture_id"], "--status", "failed")
+        t = self.store.read("threads")[0]
+        self.assertEqual(t["status"], "dropped")
+        caps = {c["capture_id"]: c for c in self.store.read("captures")}
+        self.assertEqual(caps["9800_h24_relevance_A"]["status"], "skipped")
+        self.assertEqual(tracker.validate(self.store), [])
+
+    def test_drop_refuses_non_active_and_mark_refuses_closed_thread(self):
+        screen(self.data, "9900", "quinn")
+        run(self.data, "drop", "9900", "--reason", "deleted")
+        code, _ = run(self.data, "drop", "9900", "--reason", "deleted")
+        self.assertEqual(code, 2)
+        code, _ = run(self.data, "mark", "9900_h06_relevance_A", "--status", "done")
+        self.assertEqual(code, 2)
+
+    def test_remark_clears_stale_fields(self):
+        screen(self.data, "9910", "rae")
+        run(self.data, "mark", "9910_h01_likes_A", "--status", "done", "--at", "2026-11-02T13:00:00Z",
+            "--file-ref", "captures/a.csv")
+        run(self.data, "mark", "9910_h01_likes_A", "--status", "failed")
+        c = [c for c in self.store.read("captures") if c["capture_id"] == "9910_h01_likes_A"][0]
+        self.assertEqual((c["captured_utc"], c["file_ref"]), ("", ""))
+
+    def test_confirmatory_counts_on_time_6h_relevance_only(self):
+        cfg = self.store.config
+        cfg["stopping"]["min_threads_for_confirmatory"] = 1
+        screen(self.data, "9920", "sam")
+        self.assertFalse(tracker.summarise(self.store)["confirmatory"])
+        run(self.data, "mark", "9920_h06_relevance_A", "--status", "done", "--at", "2026-11-02T18:00:00Z")
+        self.store = tracker.Store(self.data, tracker.DEFAULT_CONFIG)
+        self.store.config["stopping"]["min_threads_for_confirmatory"] = 1
+        self.assertTrue(tracker.summarise(self.store)["confirmatory"])
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ import argparse
 import csv
 import json
 import random
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -60,6 +61,8 @@ DROP_REASONS = {"deleted", "protected", "suspended", "capture_failure"}
 SOURCES = {"seed_list", "trending", "search"}
 # A capture in one of these states no longer needs action.
 CLOSED = {"done", "late", "missed", "failed", "skipped"}
+FAILED = {"missed", "failed"}
+HAR_NAME = re.compile(r"\.har(\.|$)", re.IGNORECASE)
 
 
 class TrackerError(Exception):
@@ -84,6 +87,15 @@ def parse_utc(text):
 
 def fmt_utc(dt):
     return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def is_har(file_ref):
+    """True for raw or compressed HAR names such as x.har, x.HAR, x.har.gz."""
+    return bool(HAR_NAME.search(file_ref.strip()))
+
+
+def norm_handle(handle):
+    return handle.strip().lstrip("@").lower()
 
 
 def now_utc():
@@ -221,7 +233,7 @@ def eligibility_failures(config, cand, threads, posted, discovered):
     if any(t["thread_id"] == cand["root_tweet_id"] for t in threads):
         fails.append("thread_already_selected")
     if rules["exclude_if_poster_already_selected"] and any(
-        t["poster_handle"].lower() == cand["poster_handle"].lower() for t in live
+        norm_handle(t["poster_handle"]) == norm_handle(cand["poster_handle"]) for t in live
     ):
         fails.append("poster_already_in_sample")
     return fails
@@ -265,10 +277,14 @@ def cmd_plan_sessions(store, args):
     Each day is split into `per_day` equal blocks and one start time is drawn
     uniformly inside each block, so every time of day is covered.
     """
+    if args.per_day < 1 or args.days < 1 or args.length < 1:
+        raise TrackerError("--days, --per-day and --length must be at least 1")
+    sessions = store.read("sessions")
+    if sessions and not args.append:
+        raise TrackerError("sessions already planned; pass --append to add more (log it as a deviation)")
     rng = random.Random(args.seed)
     start = parse_utc(args.start).replace(hour=0, minute=0, second=0)
     block = 24 * 60 // args.per_day
-    sessions = store.read("sessions")
     n = len(sessions)
     for day in range(args.days):
         for b in range(args.per_day):
@@ -290,7 +306,7 @@ def cmd_add_seed(store, args):
     if args.account_type not in s["account_type"] or args.topic not in s["topic"]:
         raise TrackerError("unknown topic or account_type")
     seeds = store.read("seeds")
-    if any(r["handle"].lower() == args.handle.lower() for r in seeds):
+    if any(norm_handle(r["handle"]) == norm_handle(args.handle) for r in seeds):
         raise TrackerError(f"seed {args.handle} already listed")
     seeds.append({
         "handle": args.handle,
@@ -312,6 +328,8 @@ def cmd_screen(store, args):
     check_strata(cfg, args.topic, args.account_type, args.politics, args.language)
     if args.source not in SOURCES:
         raise TrackerError(f"source must be one of {sorted(SOURCES)}")
+    if args.session not in {r["session_id"] for r in store.read("sessions")}:
+        raise TrackerError(f"unknown session {args.session!r}: screen only inside a planned session")
     posted = parse_utc(args.posted)
     discovered = parse_utc(args.discovered) if args.discovered else now_utc()
 
@@ -337,7 +355,10 @@ def cmd_screen(store, args):
         "note": args.note or "",
     }
     fails = eligibility_failures(cfg, cand, threads, posted, discovered)
-    blocked = None if fails else quota_failure(cfg, cand, threads)
+    blocked = None
+    if not fails:
+        stop = summarise(store, discovered)
+        blocked = "collection_window_ended" if stop["timed_out"] else quota_failure(cfg, cand, threads)
     if fails:
         cand["decision"], cand["reason"] = "ineligible", ";".join(fails)
     elif blocked:
@@ -399,14 +420,20 @@ def cmd_due(store, args):
 def cmd_mark(store, args):
     if args.status not in CAPTURE_STATUSES - {"pending", "late"}:
         raise TrackerError("status must be done, missed, failed or skipped")
-    if args.file_ref and args.file_ref.lower().endswith(".har"):
+    if args.file_ref and is_har(args.file_ref):
         raise TrackerError("refusing raw .har reference: store only the parsed, credential-free output")
     captures = store.read("captures")
     match = [c for c in captures if c["capture_id"] == args.capture_id]
     if not match:
         raise TrackerError(f"no capture {args.capture_id}")
     c = match[0]
+    thread = [t for t in store.read("threads") if t["thread_id"] == c["thread_id"]]
+    if thread and thread[0]["status"] in ("dropped", "partial"):
+        raise TrackerError(f"thread {c['thread_id']} is {thread[0]['status']}; its captures are closed")
     status = args.status
+    if status != "done":
+        c["captured_utc"] = ""
+        c["file_ref"] = ""
     if status == "done":
         at = parse_utc(args.at) if args.at else now_utc()
         if not parse_utc(c["window_open_utc"]) <= at <= parse_utc(c["window_close_utc"]):
@@ -430,12 +457,23 @@ def refresh_thread_status(store):
     by_thread = {}
     for c in store.read("captures"):
         by_thread.setdefault(c["thread_id"], []).append(c)
+    changed = False
     for t in threads:
-        if t["status"] in ("dropped", "partial"):
+        if t["status"] != "active":
             continue
         caps = by_thread.get(t["thread_id"], [])
-        if caps and all(c["status"] in CLOSED for c in caps):
+        early = [c for c in caps if c["age_hours"] in ("1", "6")]
+        if early and all(c["status"] in FAILED for c in early):
+            # Pre-registration 3.6: both early ages failed before any 6h data, so the cell reopens.
+            t["status"], t["status_reason"] = "dropped", "capture_failure: all 1h and 6h captures failed"
+            for c in caps:
+                if c["status"] == "pending":
+                    c["status"], c["notes"] = "skipped", "thread dropped (capture_failure)"
+                    changed = True
+        elif caps and all(c["status"] in CLOSED for c in caps):
             t["status"] = "complete"
+    if changed:
+        store.write("captures", [c for cs in by_thread.values() for c in cs])
     store.write("threads", threads)
 
 
@@ -448,6 +486,8 @@ def cmd_drop(store, args):
     if not match:
         raise TrackerError(f"no thread {args.thread_id}")
     t = match[0]
+    if t["status"] != "active":
+        raise TrackerError(f"thread {args.thread_id} is already {t['status']}")
     captures = store.read("captures")
     caps = [c for c in captures if c["thread_id"] == args.thread_id]
     has_6h = any(
@@ -485,6 +525,11 @@ def summarise(store, today=None):
     today = today or now_utc()
     elapsed = (today - started).days if started else 0
     timed_out = started is not None and elapsed >= cfg["stopping"]["collection_days"]
+    on_time_6h = {
+        c["thread_id"] for c in caps
+        if c["age_hours"] == "6" and c["sort"] == "relevance" and c["status"] == "done"
+    }
+    usable = sum(1 for t in live if t["thread_id"] in on_time_6h)
     by_status = {}
     for c in caps:
         by_status[c["status"]] = by_status.get(c["status"], 0) + 1
@@ -497,8 +542,10 @@ def summarise(store, today=None):
         "captures": by_status,
         "days_elapsed": elapsed,
         "stop": full or timed_out,
+        "timed_out": timed_out,
+        "usable_6h": usable,
         "stop_reason": "all cells full" if full else ("collection window ended" if timed_out else ""),
-        "confirmatory": len(live) >= cfg["stopping"]["min_threads_for_confirmatory"],
+        "confirmatory": usable >= cfg["stopping"]["min_threads_for_confirmatory"],
     }
 
 
@@ -521,7 +568,9 @@ def cmd_status(store, args):
     print(f"captures: {s['captures']}")
     if s["stop"]:
         print(f"STOP collecting: {s['stop_reason']}")
-    print("confirmatory sample size reached" if s["confirmatory"] else "below confirmatory minimum")
+    need = cfg["stopping"]["min_threads_for_confirmatory"]
+    verdict = "confirmatory sample size reached" if s["confirmatory"] else "below confirmatory minimum"
+    print(f"threads with an on-time 6h Relevance capture: {s['usable_6h']} (need {need}); {verdict}")
     return s
 
 
@@ -544,7 +593,7 @@ def validate(store):
         per_thread[c["thread_id"]] = per_thread.get(c["thread_id"], 0) + 1
         if c["status"] not in CAPTURE_STATUSES:
             problems.append(f"{c['capture_id']}: bad status {c['status']!r}")
-        if c["file_ref"].lower().endswith(".har"):
+        if is_har(c["file_ref"]):
             problems.append(f"{c['capture_id']}: references a raw .har file")
         if c["status"] in ("done", "late") and not c["captured_utc"]:
             problems.append(f"{c['capture_id']}: {c['status']} without captured_utc")
@@ -589,6 +638,7 @@ def build_parser():
     s.add_argument("--per-day", type=int, default=3)
     s.add_argument("--length", type=int, default=45, help="session length in minutes")
     s.add_argument("--seed", type=int, required=True)
+    s.add_argument("--append", action="store_true", help="add to an existing schedule")
 
     s = sub.add_parser("add-seed", help="add an account to the frozen seed list")
     s.add_argument("handle")

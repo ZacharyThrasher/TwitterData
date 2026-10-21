@@ -5,7 +5,7 @@
 | Status | Draft v1.0, written 2026-10-21. Freeze before the first thread is selected, then post to OSF. |
 | Owner | Zachary Thrasher |
 | Sampling tool | `sampling/tracker.py`, rules in `sampling/config.json` |
-| Reply data | Reply table produced by the "Safe thread capture parser": `docs/reply_table_schema.md` and `schema/reply_table.v1.json` (branch `claude/project-thread-u8le44`). This document uses that schema's field names and does not redefine them. |
+| Reply data | Reply table produced by the capture parser (`src/twitterdata/capture/`): `docs/reply_table_schema.md` and `schema/reply_table.v1.json`. This document uses that schema's field names and does not redefine them. |
 | Background | `research/mechanics.md` (sections 3, 4, 8, 9), `research/data-and-methods.md` (section 6), `analysis/thread-reanalysis/FINDINGS.md` in the project files |
 
 ---
@@ -129,7 +129,7 @@ Reply-level fields come from the parser's reply table (`docs/reply_table_schema.
 
 | Measure | Source | Definition |
 |---|---|---|
-| Rank | `display_rank` | Position among top-level organic replies in a capture. Converted to a percentile within the capture, and within the capture and payment tier. |
+| Rank | `display_rank` | Position among top-level organic replies in a capture. Converted to a percentile within the capture, and within the capture and payment tier. Rank models use only captures with `rank_is_absolute = true` (first page captured). |
 | Section | `conversation_section` | Above or below the low-quality fold. |
 | Premium | `author_is_blue_verified` | 1 if the author pays for any X subscription tier. `author_verified_type` separates Business and Government. |
 | Exposure | `view_count` | Views at capture time. |
