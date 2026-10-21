@@ -2,7 +2,7 @@
 """Thread sampling tracker for the pre-registered X reply-ranking study.
 
 Records which threads are screened, which are selected and why, and the
-status of every scheduled capture (1h, 6h, 24h x Relevance, Recent, Likes).
+status of every scheduled capture (6h, 24h x Relevance, Likes).
 State lives in plain CSV files under sampling/data/ so it can be diffed,
 reviewed and committed. Standard library only.
 
@@ -462,10 +462,10 @@ def refresh_thread_status(store):
         if t["status"] != "active":
             continue
         caps = by_thread.get(t["thread_id"], [])
-        early = [c for c in caps if c["age_hours"] in ("1", "6")]
+        early = [c for c in caps if int(c["age_hours"]) <= 6]
         if early and all(c["status"] in FAILED for c in early):
-            # Pre-registration 3.6: both early ages failed before any 6h data, so the cell reopens.
-            t["status"], t["status_reason"] = "dropped", "capture_failure: all 1h and 6h captures failed"
+            # Pre-registration 3.6: every capture up to 6h failed, so the cell reopens.
+            t["status"], t["status_reason"] = "dropped", "capture_failure: all captures up to 6h failed"
             for c in caps:
                 if c["status"] == "pending":
                     c["status"], c["notes"] = "skipped", "thread dropped (capture_failure)"

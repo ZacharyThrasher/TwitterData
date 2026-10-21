@@ -1,5 +1,5 @@
 {
-  "version": "1.0",
+  "version": "1.1",
   "notes": "Frozen with docs/preregistration.md. Any change after the first thread is selected must be logged in the Deviations section of the pre-registration.",
   "strata": {
     "topic": [
@@ -44,7 +44,7 @@
     }
   },
   "eligibility": {
-    "max_age_minutes_at_discovery": 40,
+    "max_age_minutes_at_discovery": 120,
     "min_replies_at_discovery": 15,
     "min_poster_followers": 10000,
     "must_be_original_post_or_quote": true,
@@ -52,13 +52,26 @@
     "exclude_if_poster_already_selected": true
   },
   "capture": {
-    "ages_hours": [1, 6, 24],
-    "sorts": ["relevance", "recent", "likes"],
-    "viewers": ["A"],
+    "ages_hours": [
+      6,
+      24
+    ],
+    "sorts": [
+      "relevance",
+      "likes"
+    ],
+    "viewers": [
+      "A"
+    ],
     "window_minutes": {
-      "1": [-10, 20],
-      "6": [-30, 45],
-      "24": [-90, 120]
+      "6": [
+        -30,
+        45
+      ],
+      "24": [
+        -90,
+        120
+      ]
     },
     "max_reply_scroll": 200
   },
